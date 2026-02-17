@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iPad 資產管理系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { primary: '#4f46e5', secondary: '#10b981', danger: '#ef4444' },
+          fontFamily: { sans: ['Inter', 'Noto Sans TC', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+    .card-shadow { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.06); }
+    .scroll-container { max-height: 70vh; overflow-y: auto; }
+    .modal-body-scroll { max-height: 80vh; overflow-y: auto; }
+    .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+    .modal-content { transform: scale(0.95); transition: transform 0.3s ease, opacity 0.3s ease; opacity: 0; }
+    .modal-backdrop.modal-open { opacity: 1; pointer-events: auto; }
+    .modal-backdrop.modal-open .modal-content { transform: scale(1); opacity: 1; }
+    #global-loading { position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Loading -->
+  <div id="global-loading">
+    <svg class="animate-spin h-12 w-12 text-primary mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+    <p class="text-xl font-bold text-gray-700" id="loading-text">系統初始化中...</p>
+  </div>
+
+  <div class="container mx-auto p-4 md:p-8">
+    <header class="mb-6 border-b pb-4">
+      <div class="flex justify-between items-center flex-wrap">
+        <h1 class="text-3xl font-extrabold text-primary flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"></path><line x1="2" y1="20" x2="2.01" y2="20"></line></svg>
+          iPad 資產管理儀表板
+        </h1>
+        <div id="env-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-gray-200 text-gray-600">偵測環境中...</div>
+      </div>
+      <p id="system-message" class="text-sm text-red-600 mt-1 h-5"></p>
+    </header>
+
+    <!-- 頁籤導航 -->
+    <div class="mb-6 border-b border-gray-200">
+      <ul class="flex flex-wrap -mb-px">
+        <li class="mr-2">
+          <button id="tab-dashboard" onclick="switchView('dashboard')" class="inline-block p-4 border-b-2 border-primary text-primary font-semibold rounded-t-lg transition duration-150">分佈概覽與查詢</button>
+        </li>
+        <li class="mr-2">
+          <button id="tab-carts" onclick="switchView('carts')" class="inline-block p-4 border-b-2 border-transparent text-gray-500 font-semibold rounded-t-lg hover:text-gray-600 transition duration-150">充電車管理</button>
+        </li>
+        <li class="mr-2">
+          <button id="tab-edit" onclick="switchView('edit')" class="inline-block p-4 border-b-2 border-transparent text-gray-500 font-semibold rounded-t-lg hover:text-gray-600 transition duration-150">數據編輯模式</button>
+        </li>
+      </ul>
+    </div>
+
+    <!-- 主要內容 -->
+    <div id="content-container">
+      <!-- 視圖 1: 儀表板 -->
+      <div id="dashboard-view" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-2 bg-white p-6 rounded-xl card-shadow">
+          <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 class="text-2xl font-semibold text-gray-800">充電車分佈概覽</h2>
+            <button onclick="exportToCSV()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-3 rounded-lg text-sm transition">導出 CSV</button>
+          </div>
+          <div class="mb-6 p-4 bg-primary/10 rounded-lg border border-primary/20">
+            <p class="text-sm font-medium text-primary">系統內所有 iPad 總數:</p>
+            <p id="total-ipad-count" class="text-3xl font-extrabold text-primary mt-1">0</p>
+          </div>
+          <div id="cart-list" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 scroll-container"></div>
+        </div>
+        <div class="lg:col-span-1 bg-white p-6 rounded-xl card-shadow space-y-6">
+          <div>
+            <h2 class="text-2xl font-semibold mb-4 text-gray-800 border-b pb-2">iPad 查詢與位置更改</h2>
+            <div class="space-y-4">
+              <input type="text" id="ipad-search-input" placeholder="輸入編號 (例: 001 或 901)" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-secondary focus:border-secondary">
+              <button id="search-button" class="w-full bg-secondary hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition">查詢目前地點</button>
+              <div id="search-result" class="mt-4 p-4 bg-secondary/10 border-l-4 border-secondary rounded-lg text-gray-800 hidden">
+                <p class="font-bold mb-1">查詢結果:</p>
+                <p id="result-ipad-id" class="font-mono text-sm"></p>
+                <p id="result-location" class="text-lg font-bold text-secondary"></p>
+                <div id="change-location-container" class="mt-3 hidden">
+                  <button id="change-location-button" class="w-full bg-primary hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg text-sm transition">更改位置</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h2 class="text-xl font-semibold mb-2 text-gray-800 border-b pb-2">資料同步操作</h2>
+            <button onclick="initializeData()" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center">
+              重新載入資料
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 視圖 2: 充電車管理 -->
+      <div id="carts-view" class="hidden bg-white p-6 rounded-xl card-shadow">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+          <h2 class="text-2xl font-semibold text-gray-800">充電車地點管理</h2>
+          <p class="text-sm text-gray-500">此處修改會同步更新該車內所有 iPad 的存放地點</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">充電車名稱</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">設備數量</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">目前存放地點</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              </tr>
+            </thead>
+            <tbody id="cart-mgmt-body" class="bg-white divide-y divide-gray-200"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 視圖 3: 編輯表格 -->
+      <div id="edit-view" class="hidden bg-white p-6 rounded-xl card-shadow">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+          <h2 class="text-2xl font-semibold text-gray-800">批量編輯</h2>
+          <button onclick="saveAllDataToCloud()" class="bg-primary hover:bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg text-sm transition shadow-lg">儲存變更到雲端</button>
+        </div>
+        <div class="mb-4 flex space-x-2">
+          <input type="text" id="edit-filter-input" placeholder="篩選: 輸入充電車名、地點或 iPad 編號" class="w-full p-3 border border-gray-300 rounded-lg" oninput="renderEditTable()">
+          <button onclick="clearEditFilter()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition text-sm flex-shrink-0">清除</button>
+        </div>
+        <div class="table-view-container">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="id">iPad 編號</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="assignedCart">隸屬充電車</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="currentCart">目前充電車 (編輯)</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="currentLocation">存放地點 (編輯)</th>
+              </tr>
+            </thead>
+            <tbody id="edit-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart Detail Modal -->
+  <div id="cart-detail-modal" class="modal-backdrop hidden" onclick="if(event.target===this)closeModal()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 modal-content">
+      <div class="p-6">
+        <div class="flex justify-between items-center border-b pb-3 mb-4">
+          <h3 class="text-2xl font-bold text-gray-800" id="modal-cart-title"></h3>
+          <button class="text-gray-400 hover:text-gray-600" onclick="closeModal()">✕</button>
+        </div>
+        <p class="text-lg mb-4 text-gray-600">總數: <span id="modal-ipad-count" class="text-primary font-bold"></span> 台</p>
+        <div class="modal-body-scroll bg-gray-50 p-4 rounded-lg">
+          <div id="modal-ipad-list" class="grid grid-cols-2 gap-2 text-sm font-mono text-gray-700"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Update Location Modal -->
+  <div id="update-location-modal" class="modal-backdrop hidden" onclick="if(event.target===this)closeUpdateModal()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md m-4 modal-content">
+      <div class="p-6">
+        <div class="flex justify-between items-center border-b pb-3 mb-4">
+          <h3 class="text-2xl font-bold text-gray-800">更改 iPad 位置</h3>
+          <button class="text-gray-400 hover:text-gray-600" onclick="closeUpdateModal()">✕</button>
+        </div>
+        <p class="text-lg mb-4 text-gray-600">正在更改: <span id="update-ipad-id" class="text-secondary font-bold"></span></p>
+        <div class="mb-4 p-3 bg-gray-100 rounded text-sm text-gray-600">
+          <span class="font-bold">隸屬充電車:</span> <span id="display-assigned-cart"></span>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">新的目前充電車:</label>
+            <select id="new-current-cart" class="w-full p-3 border border-gray-300 rounded-lg bg-white"></select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">新的存放地點/班級:</label>
+            <input type="text" id="new-current-location" class="w-full p-3 border border-gray-300 rounded-lg">
+          </div>
+          <button id="confirm-update-button" class="w-full bg-secondary hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition">確認並更新 (同步)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- 全域變數 ---
+    let allIpads = [];
+    let ipadsMap = {};
+    let currentEditingIpadId = null;
+    let currentSort = { key: 'id', direction: 'asc' };
+
+    // --- 核心：API 抽象層 ---
+    const api = {
+      isGAS: typeof google !== 'undefined' && google.script && google.script.run,
+
+      init: function() {
+        const badge = document.getElementById('env-badge');
+        if (this.isGAS) {
+          badge.textContent = '線上模式 (Google Sheet)';
+          badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700';
+        } else {
+          badge.textContent = '預覽模式 (模擬資料)';
+          badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-yellow-100 text-yellow-700';
+        }
+      },
+
+      getAllData: function(successFn, errorFn) {
+        if (this.isGAS) {
+          google.script.run.withSuccessHandler(successFn).withFailureHandler(errorFn).getAllData();
+        } else {
+          console.log("[模擬] 讀取資料中...");
+          setTimeout(() => successFn(generateMockData()), 800);
+        }
+      },
+
+      saveAllData: function(data, successFn, errorFn) {
+        if (this.isGAS) {
+          google.script.run.withSuccessHandler(successFn).withFailureHandler(errorFn).saveAllData(data);
+        } else {
+          console.log("[模擬] 儲存資料...", data.length);
+          setTimeout(() => successFn("Success"), 1000);
+        }
+      },
+
+      updateSingleLocation: function(id, cart, loc, successFn, errorFn) {
+        if (this.isGAS) {
+          google.script.run.withSuccessHandler(successFn).withFailureHandler(errorFn).updateSingleLocation(id, cart, loc);
+        } else {
+          console.log(`[模擬] 更新 ${id} -> ${cart}, ${loc}`);
+          setTimeout(() => successFn("Success"), 600);
+        }
+      }
+    };
+
+    // --- 模擬資料產生器 ---
+    function generateMockData() {
+      const data = [];
+      const itemsPerCart = 30;
+      for (let c = 1; c <= 16; c++) {
+        for (let i = 1; i <= itemsPerCart; i++) {
+          const idNum = (c - 1) * itemsPerCart + i;
+          const type = c <= 10 ? 'YZES_IPAD9_' : 'YZES_IPAD10_';
+          const idStr = `${type}${String(idNum).padStart(3, '0')}`;
+          data.push({
+            id: idStr,
+            assignedCart: `充電車${c}`,
+            currentCart: `充電車${c}`,
+            currentLocation: `教室${400 + (c % 10)}`
+          });
+        }
+      }
+      data.push({ id: 'YZES_IPAD10_901', assignedCart: '充電車10', currentCart: '老師外借', currentLocation: '王小明老師' });
+      data.push({ id: 'YZES_IPAD10_902', assignedCart: '充電車10', currentCart: '創意教室', currentLocation: '創意教室' });
+      data.push({ id: 'YZES_IPAD10_903', assignedCart: '充電車10', currentCart: '圖書館', currentLocation: '閱覽區' });
+      data.push({ id: 'YZES_IPAD10_904', assignedCart: '充電車12', currentCart: '維修中', currentLocation: '總務處' });
+      return data;
+    }
+
+    // --- 主邏輯 ---
+    function initializeData() {
+      api.init();
+      toggleLoading(true, "正在同步資料...");
+      api.getAllData(onDataLoaded, onFailure);
+    }
+
+    function onDataLoaded(data) {
+      allIpads = data;
+      ipadsMap = {};
+      allIpads.forEach(ipad => ipadsMap[ipad.id.toUpperCase()] = ipad);
+      renderCartOverview();
+      renderCartManagement();
+      renderEditTable();
+      toggleLoading(false);
+      showSystemMessage('資料同步完成', 'success');
+    }
+
+    function onFailure(error) {
+      toggleLoading(false);
+      showSystemMessage('錯誤: ' + error.message, 'error');
+      alert('操作失敗: ' + error.message);
+    }
+
+    function saveAllDataToCloud() {
+      if (!confirm('確定要儲存變更嗎？這將覆蓋雲端資料。')) return;
+      toggleLoading(true, "正在儲存...");
+      api.saveAllData(allIpads, (res) => {
+        showSystemMessage('儲存成功！', 'success');
+        toggleLoading(false);
+      }, onFailure);
+    }
+
+    function updateSingleIpadCloud(ipadId, newCart, newLocation) {
+      toggleLoading(true, "正在更新...");
+      api.updateSingleLocation(ipadId, newCart, newLocation, () => {
+        const target = allIpads.find(i => i.id.toUpperCase() === ipadId.toUpperCase());
+        if (target) {
+          target.currentCart = newCart;
+          target.currentLocation = newLocation;
+          if (ipadsMap[ipadId.toUpperCase()]) {
+            Object.assign(ipadsMap[ipadId.toUpperCase()], { currentCart: newCart, currentLocation: newLocation });
+          }
+          renderCartOverview();
+          renderCartManagement();
+          renderEditTable();
+          simulateSearch(ipadId);
+          showSystemMessage(`iPad ${ipadId} 更新成功！`, 'success');
+        }
+        toggleLoading(false);
+        closeUpdateModal();
+      }, onFailure);
+    }
+
+    function getUniqueCarts() {
+      const carts = new Set();
+      allIpads.forEach(i => {
+        carts.add(i.assignedCart);
+        carts.add(i.currentCart);
+      });
+      carts.add("維修中");
+      return Array.from(carts).sort((a, b) => {
+        const na = parseInt(a.match(/\d+/)?.[0] || 999), nb = parseInt(b.match(/\d+/)?.[0] || 999);
+        return na - nb || a.localeCompare(b, 'zh-TW');
+      });
+    }
+
+    // --- 介面渲染 ---
+    function toggleLoading(show, text) {
+      const el = document.getElementById('global-loading');
+      if (text) document.getElementById('loading-text').textContent = text;
+      el.style.display = show ? 'flex' : 'none';
+    }
+
+    function showSystemMessage(msg, type) {
+      const el = document.getElementById('system-message');
+      el.textContent = msg;
+      el.className = `text-sm mt-1 h-5 ${type === 'error' ? 'text-red-600' : 'text-secondary'}`;
+      setTimeout(() => el.textContent = '', 5000);
+    }
+
+    function simulateSearch(queryId) {
+      const resultEl = document.getElementById('search-result');
+      const changeBtnContainer = document.getElementById('change-location-container');
+      resultEl.classList.add('hidden');
+      changeBtnContainer.classList.add('hidden');
+      if (!queryId) return;
+      queryId = queryId.trim();
+
+      let target = ipadsMap[queryId.toUpperCase()];
+      if (!target && /^\d+$/.test(queryId)) {
+        const num = parseInt(queryId, 10);
+        const padded = String(num).padStart(3, '0');
+        target = ipadsMap[`YZES_IPAD9_${padded}`] || ipadsMap[`YZES_IPAD10_${padded}`];
+      }
+      if (!target) {
+        target = allIpads.find(i => i.id.toUpperCase().includes(queryId.toUpperCase()));
+      }
+
+      const idEl = document.getElementById('result-ipad-id');
+      const locEl = document.getElementById('result-location');
+      resultEl.classList.remove('hidden', 'bg-red-100', 'border-red-500', 'bg-secondary/10', 'border-secondary');
+
+      if (target) {
+        idEl.textContent = `編號: ${target.id}`;
+        locEl.textContent = `目前充電車: ${target.currentCart} (存放於: ${target.currentLocation})`;
+        resultEl.classList.add('bg-secondary/10', 'border-secondary');
+        document.getElementById('change-location-button').onclick = () => showUpdateModal(target);
+        changeBtnContainer.classList.remove('hidden');
+      } else {
+        idEl.textContent = `查詢: ${queryId}`;
+        locEl.textContent = '未找到';
+        resultEl.classList.add('bg-red-100', 'border-red-500');
+      }
+    }
+
+    function renderCartOverview() {
+      const list = document.getElementById('cart-list');
+      document.getElementById('total-ipad-count').textContent = allIpads.length;
+      list.innerHTML = '';
+
+      const groups = allIpads.reduce((acc, i) => {
+        (acc[i.currentCart] = acc[i.currentCart] || []).push(i);
+        return acc;
+      }, {});
+
+      Object.keys(groups).sort((a, b) => {
+        const na = parseInt(a.match(/\d+/)?.[0] || 999), nb = parseInt(b.match(/\d+/)?.[0] || 999);
+        return na - nb || a.localeCompare(b, 'zh-TW');
+      }).forEach(name => {
+        const count = groups[name].length;
+        const items = groups[name];
+        const locs = [...new Set(items.map(i => i.currentLocation).filter(l => l))];
+        const locationDisplay = locs.length === 1 ? locs[0] : (locs.length > 1 ? `${locs[0]} 等 ${locs.length} 處` : '未指定');
+
+        const div = document.createElement('div');
+        div.className = 'bg-white border border-gray-200 p-4 rounded-xl hover:shadow-lg transition cursor-pointer transform hover:scale-[1.02]';
+
+        const isRepair = name.includes('維修');
+        const isSpecial = ['外借', '創意', '圖書館'].some(k => name.includes(k));
+        let iconColor = 'text-primary';
+        let iconPath = 'M5 20h14v-2H5v2zm14-8h-2V7h2v5zm-4 0H9V7h6v5zm-6 0H5V7h4v5zm8 2H7v-3h10v3z';
+
+        if (isRepair) {
+          iconColor = 'text-danger';
+          iconPath = 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z';
+        } else if (isSpecial) {
+          iconColor = 'text-secondary';
+          iconPath = 'M10 20h4V4h-4v16zm-6 0h4V4H4v16zm12 0h4V4h-4v16z';
+        }
+
+        div.innerHTML = `
+          <div class="flex items-center space-x-3 mb-3">
+            <svg class="h-6 w-6 ${iconColor} flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="${iconPath}"/></svg>
+            <h3 class="text-lg font-bold text-gray-900 truncate" title="${name}">${name}</h3>
+          </div>
+          <div class="flex justify-between items-end">
+            <div>
+              <p class="text-3xl font-extrabold text-primary">${count}</p>
+              <p class="text-xs text-gray-500">數量</p>
+            </div>
+            <div class="text-right max-w-[60%]">
+              <p class="text-lg font-bold text-gray-700 truncate" title="${locs.join(', ')}">${locationDisplay}</p>
+              <p class="text-xs text-gray-500">存放地點</p>
+            </div>
+          </div>
+        `;
+        div.onclick = () => {
+          closeModal();
+          document.getElementById('edit-filter-input').value = name;
+          switchView('edit');
+        };
+        div.ondblclick = (e) => {
+          e.stopPropagation();
+          openCartDetailsModal(name, groups[name]);
+        };
+        list.appendChild(div);
+      });
+    }
+
+    function renderCartManagement() {
+      const tbody = document.getElementById('cart-mgmt-body');
+      tbody.innerHTML = '';
+      const groups = allIpads.reduce((acc, i) => {
+        (acc[i.currentCart] = acc[i.currentCart] || []).push(i);
+        return acc;
+      }, {});
+
+      const sortedCarts = Object.keys(groups).sort((a, b) => {
+        const na = parseInt(a.match(/\d+/)?.[0] || 999), nb = parseInt(b.match(/\d+/)?.[0] || 999);
+        return na - nb || a.localeCompare(b, 'zh-TW');
+      });
+
+      sortedCarts.forEach(cartName => {
+        const devices = groups[cartName];
+        const locations = [...new Set(devices.map(d => d.currentLocation))];
+        const displayLoc = locations.length === 1 ? locations[0] : (locations[0] + (locations.length > 1 ? `(及其他${locations.length - 1}處)` : ''));
+        const simpleLoc = locations.length === 1 ? locations[0] : '';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${cartName}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${devices.length} 台</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+            <input type="text" value="${simpleLoc}" placeholder="${displayLoc}" id="loc-input-${cartName}" class="w-full p-2 border border-gray-300 rounded focus:border-primary text-sm">
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+            <button class="text-primary hover:text-indigo-900 font-bold" onclick="batchUpdateCart('${cartName}')">更新地點</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    window.batchUpdateCart = (cartName) => {
+      const input = document.getElementById(`loc-input-${cartName}`);
+      const newLoc = input.value.trim();
+      if (!newLoc) return showSystemMessage('請輸入存放地點', 'error');
+      if (!confirm(`確定要將【${cartName}】內的所有 iPad 移動到【${newLoc}】嗎？`)) return;
+
+      let updatedCount = 0;
+      allIpads.forEach(ipad => {
+        if (ipad.currentCart === cartName) {
+          ipad.currentLocation = newLoc;
+          if (ipadsMap[ipad.id.toUpperCase()]) ipadsMap[ipad.id.toUpperCase()].currentLocation = newLoc;
+          updatedCount++;
+        }
+      });
+
+      showSystemMessage(`已暫存 ${updatedCount} 筆資料更新，請記得點擊「儲存變更到雲端」`, 'secondary');
+      renderCartOverview();
+      renderCartManagement();
+      renderEditTable();
+    };
+
+    function renderEditTable() {
+      const tbody = document.getElementById('edit-table-body');
+      const filter = document.getElementById('edit-filter-input').value.toLowerCase();
+      tbody.innerHTML = '';
+
+      const filtered = allIpads.filter(i =>
+        !filter || i.id.toLowerCase().includes(filter) || i.currentCart.toLowerCase().includes(filter) || i.currentLocation.toLowerCase().includes(filter)
+      );
+
+      filtered.sort((a, b) => {
+        const k = currentSort.key, d = currentSort.direction === 'asc' ? 1 : -1;
+        if (k === 'id') {
+          const na = parseInt(a.id.match(/\d+/g)?.slice(-1)[0] || 0), nb = parseInt(b.id.match(/\d+/g)?.slice(-1)[0] || 0);
+          if (na !== nb) return (na - nb) * d;
+        }
+        return a[k].localeCompare(b[k], 'zh-TW') * d;
+      });
+
+      const uniqueCarts = getUniqueCarts();
+
+      filtered.forEach(i => {
+        const row = tbody.insertRow();
+        row.className = 'hover:bg-gray-100 transition';
+
+        let optionsHtml = uniqueCarts.map(c =>
+          `<option value="${c}" ${c === i.currentCart ? 'selected' : ''}>${c}</option>`
+        ).join('');
+        if (!uniqueCarts.includes(i.currentCart)) {
+          optionsHtml += `<option value="${i.currentCart}" selected>${i.currentCart}</option>`;
+        }
+
+        row.innerHTML = `
+          <td class="px-6 py-4 text-sm font-medium text-gray-900">${i.id}</td>
+          <td class="px-6 py-4 text-sm text-gray-500">${i.assignedCart}</td>
+          <td class="px-6 py-1">
+            <select data-id="${i.id}" data-key="currentCart" class="w-full p-2 border border-gray-300 rounded focus:border-primary bg-white">
+              ${optionsHtml}
+            </select>
+          </td>
+          <td class="px-6 py-1"><input type="text" value="${i.currentLocation}" data-id="${i.id}" data-key="currentLocation" class="w-full p-2 border border-gray-300 rounded focus:border-secondary"></td>
+        `;
+      });
+
+      tbody.querySelectorAll('input, select').forEach(elm => {
+        elm.addEventListener('change', (e) => {
+          const t = allIpads.find(x => x.id === e.target.dataset.id);
+          if (t) {
+            t[e.target.dataset.key] = e.target.value.trim();
+            if (ipadsMap[t.id.toUpperCase()]) ipadsMap[t.id.toUpperCase()][e.target.dataset.key] = e.target.value.trim();
+            if (e.target.dataset.key === 'currentCart') renderCartManagement();
+            showSystemMessage(`暫存: ${t.id}，請記得儲存`, 'secondary');
+          }
+        });
+      });
+    }
+
+    function switchView(view) {
+      const views = ['dashboard', 'carts', 'edit'];
+      views.forEach(v => {
+        const el = document.getElementById(`${v}-view`);
+        const btn = document.getElementById(`tab-${v}`);
+        if (v === view) {
+          el.classList.remove('hidden');
+          btn.className = btn.className.replace('border-transparent text-gray-500', 'border-primary text-primary');
+        } else {
+          el.classList.add('hidden');
+          btn.className = btn.className.replace('border-primary text-primary', 'border-transparent text-gray-500');
+        }
+      });
+      if (view === 'edit') renderEditTable();
+      if (view === 'carts') renderCartManagement();
+      if (view === 'dashboard') renderCartOverview();
+    }
+
+    function openCartDetailsModal(name, items) {
+      document.getElementById('modal-cart-title').textContent = name;
+      document.getElementById('modal-ipad-count').textContent = items.length;
+      const list = document.getElementById('modal-ipad-list');
+      list.innerHTML = items.sort((a, b) => a.id.localeCompare(b.id)).map(i =>
+        `<div class="p-2 bg-white border rounded flex justify-between"><span class="font-mono">${i.id}</span><span class="text-xs font-bold text-primary">${i.currentLocation}</span></div>`
+      ).join('');
+      const m = document.getElementById('cart-detail-modal');
+      m.classList.remove('hidden');
+      setTimeout(() => m.classList.add('modal-open'), 10);
+    }
+
+    function showUpdateModal(i) {
+      currentEditingIpadId = i.id;
+      document.getElementById('update-ipad-id').textContent = i.id;
+      document.getElementById('display-assigned-cart').textContent = i.assignedCart;
+      document.getElementById('new-current-location').value = i.currentLocation;
+
+      const select = document.getElementById('new-current-cart');
+      const uniqueCarts = getUniqueCarts();
+      let optionsHtml = uniqueCarts.map(c =>
+        `<option value="${c}" ${c === i.currentCart ? 'selected' : ''}>${c}</option>`
+      ).join('');
+      if (!uniqueCarts.includes(i.currentCart)) optionsHtml += `<option value="${i.currentCart}" selected>${i.currentCart}</option>`;
+      select.innerHTML = optionsHtml;
+
+      const m = document.getElementById('update-location-modal');
+      m.classList.remove('hidden');
+      void m.offsetWidth;
+      m.classList.add('modal-open');
+    }
+
+    function closeModal() {
+      document.querySelectorAll('.modal-backdrop').forEach(m => {
+        m.classList.remove('modal-open');
+        setTimeout(() => m.classList.add('hidden'), 300);
+      });
+    }
+
+    window.closeUpdateModal = closeModal;
+    window.clearEditFilter = () => { document.getElementById('edit-filter-input').value = ''; renderEditTable(); };
+
+    window.exportToCSV = () => {
+      if (!allIpads.length) return showSystemMessage('無資料', 'error');
+      const csv = ['編號,隸屬,位置,地點', ...allIpads.map(i => `${i.id},${i.assignedCart},${i.currentCart},${i.currentLocation}`)].join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: 'text/csv' }));
+      a.download = `iPad_Assets_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+    };
+
+    window.addEventListener('load', initializeData);
+
+    document.getElementById('search-button').addEventListener('click', () =>
+      simulateSearch(document.getElementById('ipad-search-input').value)
+    );
+
+    document.querySelectorAll('.sortable-header').forEach(h =>
+      h.addEventListener('click', (e) => {
+        const k = e.currentTarget.dataset.sortKey;
+        currentSort = { key: k, direction: currentSort.key === k && currentSort.direction === 'asc' ? 'desc' : 'asc' };
+        renderEditTable();
+      })
+    );
+
+    document.getElementById('confirm-update-button').addEventListener('click', () => {
+      const c = document.getElementById('new-current-cart').value.trim(),
+            l = document.getElementById('new-current-location').value.trim();
+      if (c && l) updateSingleIpadCloud(currentEditingIpadId, c, l);
+      else showSystemMessage('欄位不可為空', 'error');
+    });
+  </script>
+</body>
+</html>
