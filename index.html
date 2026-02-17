@@ -45,7 +45,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"></path><line x1="2" y1="20" x2="2.01" y2="20"></line></svg>
           iPad 資產管理儀表板
         </h1>
-        <div id="env-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-gray-200 text-gray-600">偵測環境中...</div>
+        <div id="env-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-gray-200 text-gray-600">連線中...</div>
       </div>
       <p id="system-message" class="text-sm text-red-600 mt-1 h-5"></p>
     </header>
@@ -196,86 +196,75 @@
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    // --- Firebase ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, doc, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+    const app = initializeApp({
+      apiKey: "AIzaSyClniX_uQNPDRC8bTLZP-s3-aGB6466t1c",
+      authDomain: "github-f016e.firebaseapp.com",
+      projectId: "github-f016e",
+      storageBucket: "github-f016e.firebasestorage.app",
+      messagingSenderId: "726498300688",
+      appId: "1:726498300688:web:903d43c66c35b74e3e05d3"
+    });
+    const db = getFirestore(app);
+    const COLLECTION = "ipad-assets";
+
     // --- 全域變數 ---
     let allIpads = [];
     let ipadsMap = {};
     let currentEditingIpadId = null;
     let currentSort = { key: 'id', direction: 'asc' };
+    let dirtyIds = new Set(); // 追蹤有修改的 iPad
 
-    // --- 核心：API 抽象層 ---
-    const api = {
-      isGAS: typeof google !== 'undefined' && google.script && google.script.run,
+    // --- Firebase API ---
+    async function firebaseGetAll() {
+      const snap = await getDocs(collection(db, COLLECTION));
+      return snap.docs.map(d => d.data());
+    }
 
-      init: function() {
-        const badge = document.getElementById('env-badge');
-        if (this.isGAS) {
-          badge.textContent = '線上模式 (Google Sheet)';
-          badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700';
-        } else {
-          badge.textContent = '預覽模式 (模擬資料)';
-          badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-yellow-100 text-yellow-700';
+    async function firebaseUpdateSingle(ipadId, newCart, newLocation) {
+      const ref = doc(db, COLLECTION, ipadId);
+      await updateDoc(ref, { currentCart: newCart, currentLocation: newLocation });
+    }
+
+    async function firebaseSaveAll() {
+      // 只存有修改的
+      const toSave = dirtyIds.size > 0 ? allIpads.filter(i => dirtyIds.has(i.id)) : allIpads;
+      const BATCH_SIZE = 400;
+      for (let start = 0; start < toSave.length; start += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        const chunk = toSave.slice(start, start + BATCH_SIZE);
+        for (const item of chunk) {
+          batch.set(doc(db, COLLECTION, item.id), item);
         }
-      },
-
-      getAllData: function(successFn, errorFn) {
-        if (this.isGAS) {
-          google.script.run.withSuccessHandler(successFn).withFailureHandler(errorFn).getAllData();
-        } else {
-          console.log("[模擬] 讀取資料中...");
-          setTimeout(() => successFn(generateMockData()), 800);
-        }
-      },
-
-      saveAllData: function(data, successFn, errorFn) {
-        if (this.isGAS) {
-          google.script.run.withSuccessHandler(successFn).withFailureHandler(errorFn).saveAllData(data);
-        } else {
-          console.log("[模擬] 儲存資料...", data.length);
-          setTimeout(() => successFn("Success"), 1000);
-        }
-      },
-
-      updateSingleLocation: function(id, cart, loc, successFn, errorFn) {
-        if (this.isGAS) {
-          google.script.run.withSuccessHandler(successFn).withFailureHandler(errorFn).updateSingleLocation(id, cart, loc);
-        } else {
-          console.log(`[模擬] 更新 ${id} -> ${cart}, ${loc}`);
-          setTimeout(() => successFn("Success"), 600);
-        }
+        await batch.commit();
       }
-    };
-
-    // --- 模擬資料產生器 ---
-    function generateMockData() {
-      const data = [];
-      const itemsPerCart = 30;
-      for (let c = 1; c <= 16; c++) {
-        for (let i = 1; i <= itemsPerCart; i++) {
-          const idNum = (c - 1) * itemsPerCart + i;
-          const type = c <= 10 ? 'YZES_IPAD9_' : 'YZES_IPAD10_';
-          const idStr = `${type}${String(idNum).padStart(3, '0')}`;
-          data.push({
-            id: idStr,
-            assignedCart: `充電車${c}`,
-            currentCart: `充電車${c}`,
-            currentLocation: `教室${400 + (c % 10)}`
-          });
-        }
-      }
-      data.push({ id: 'YZES_IPAD10_901', assignedCart: '充電車10', currentCart: '老師外借', currentLocation: '王小明老師' });
-      data.push({ id: 'YZES_IPAD10_902', assignedCart: '充電車10', currentCart: '創意教室', currentLocation: '創意教室' });
-      data.push({ id: 'YZES_IPAD10_903', assignedCart: '充電車10', currentCart: '圖書館', currentLocation: '閱覽區' });
-      data.push({ id: 'YZES_IPAD10_904', assignedCart: '充電車12', currentCart: '維修中', currentLocation: '總務處' });
-      return data;
+      dirtyIds.clear();
+      return toSave.length;
     }
 
     // --- 主邏輯 ---
-    function initializeData() {
-      api.init();
-      toggleLoading(true, "正在同步資料...");
-      api.getAllData(onDataLoaded, onFailure);
-    }
+    window.initializeData = async function() {
+      toggleLoading(true, "正在從 Firebase 載入...");
+      try {
+        const data = await firebaseGetAll();
+        if (data.length === 0) {
+          toggleLoading(false);
+          const badge = document.getElementById('env-badge');
+          badge.textContent = '⚠️ Firestore 無資料';
+          badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-red-100 text-red-700';
+          showSystemMessage('Firestore 無資料，請先執行 seed.html 匯入', 'error');
+          return;
+        }
+        onDataLoaded(data);
+      } catch (e) {
+        toggleLoading(false);
+        showSystemMessage('Firebase 錯誤: ' + e.message, 'error');
+      }
+    };
 
     function onDataLoaded(data) {
       allIpads = data;
@@ -285,27 +274,30 @@
       renderCartManagement();
       renderEditTable();
       toggleLoading(false);
-      showSystemMessage('資料同步完成', 'success');
+      dirtyIds.clear();
+
+      const badge = document.getElementById('env-badge');
+      badge.textContent = '🔥 Firebase 線上模式';
+      badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700';
+      showSystemMessage(`資料同步完成，共 ${allIpads.length} 筆`, 'success');
     }
 
-    function onFailure(error) {
+    window.saveAllDataToCloud = async function() {
+      if (!confirm('確定要儲存變更嗎？')) return;
+      toggleLoading(true, "正在儲存到 Firebase...");
+      try {
+        const count = await firebaseSaveAll();
+        showSystemMessage(`儲存成功！共更新 ${count} 筆`, 'success');
+      } catch (e) {
+        showSystemMessage('儲存失敗: ' + e.message, 'error');
+      }
       toggleLoading(false);
-      showSystemMessage('錯誤: ' + error.message, 'error');
-      alert('操作失敗: ' + error.message);
-    }
+    };
 
-    function saveAllDataToCloud() {
-      if (!confirm('確定要儲存變更嗎？這將覆蓋雲端資料。')) return;
-      toggleLoading(true, "正在儲存...");
-      api.saveAllData(allIpads, (res) => {
-        showSystemMessage('儲存成功！', 'success');
-        toggleLoading(false);
-      }, onFailure);
-    }
-
-    function updateSingleIpadCloud(ipadId, newCart, newLocation) {
+    async function updateSingleIpadCloud(ipadId, newCart, newLocation) {
       toggleLoading(true, "正在更新...");
-      api.updateSingleLocation(ipadId, newCart, newLocation, () => {
+      try {
+        await firebaseUpdateSingle(ipadId, newCart, newLocation);
         const target = allIpads.find(i => i.id.toUpperCase() === ipadId.toUpperCase());
         if (target) {
           target.currentCart = newCart;
@@ -319,17 +311,16 @@
           simulateSearch(ipadId);
           showSystemMessage(`iPad ${ipadId} 更新成功！`, 'success');
         }
-        toggleLoading(false);
-        closeUpdateModal();
-      }, onFailure);
+      } catch (e) {
+        showSystemMessage('更新失敗: ' + e.message, 'error');
+      }
+      toggleLoading(false);
+      closeModal();
     }
 
     function getUniqueCarts() {
       const carts = new Set();
-      allIpads.forEach(i => {
-        carts.add(i.assignedCart);
-        carts.add(i.currentCart);
-      });
+      allIpads.forEach(i => { carts.add(i.assignedCart); carts.add(i.currentCart); });
       carts.add("維修中");
       return Array.from(carts).sort((a, b) => {
         const na = parseInt(a.match(/\d+/)?.[0] || 999), nb = parseInt(b.match(/\d+/)?.[0] || 999);
@@ -361,8 +352,7 @@
 
       let target = ipadsMap[queryId.toUpperCase()];
       if (!target && /^\d+$/.test(queryId)) {
-        const num = parseInt(queryId, 10);
-        const padded = String(num).padStart(3, '0');
+        const padded = String(parseInt(queryId, 10)).padStart(3, '0');
         target = ipadsMap[`YZES_IPAD9_${padded}`] || ipadsMap[`YZES_IPAD10_${padded}`];
       }
       if (!target) {
@@ -412,14 +402,8 @@
         const isSpecial = ['外借', '創意', '圖書館'].some(k => name.includes(k));
         let iconColor = 'text-primary';
         let iconPath = 'M5 20h14v-2H5v2zm14-8h-2V7h2v5zm-4 0H9V7h6v5zm-6 0H5V7h4v5zm8 2H7v-3h10v3z';
-
-        if (isRepair) {
-          iconColor = 'text-danger';
-          iconPath = 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z';
-        } else if (isSpecial) {
-          iconColor = 'text-secondary';
-          iconPath = 'M10 20h4V4h-4v16zm-6 0h4V4H4v16zm12 0h4V4h-4v16z';
-        }
+        if (isRepair) { iconColor = 'text-danger'; iconPath = 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z'; }
+        else if (isSpecial) { iconColor = 'text-secondary'; iconPath = 'M10 20h4V4h-4v16zm-6 0h4V4H4v16zm12 0h4V4h-4v16z'; }
 
         div.innerHTML = `
           <div class="flex items-center space-x-3 mb-3">
@@ -427,25 +411,11 @@
             <h3 class="text-lg font-bold text-gray-900 truncate" title="${name}">${name}</h3>
           </div>
           <div class="flex justify-between items-end">
-            <div>
-              <p class="text-3xl font-extrabold text-primary">${count}</p>
-              <p class="text-xs text-gray-500">數量</p>
-            </div>
-            <div class="text-right max-w-[60%]">
-              <p class="text-lg font-bold text-gray-700 truncate" title="${locs.join(', ')}">${locationDisplay}</p>
-              <p class="text-xs text-gray-500">存放地點</p>
-            </div>
-          </div>
-        `;
-        div.onclick = () => {
-          closeModal();
-          document.getElementById('edit-filter-input').value = name;
-          switchView('edit');
-        };
-        div.ondblclick = (e) => {
-          e.stopPropagation();
-          openCartDetailsModal(name, groups[name]);
-        };
+            <div><p class="text-3xl font-extrabold text-primary">${count}</p><p class="text-xs text-gray-500">數量</p></div>
+            <div class="text-right max-w-[60%]"><p class="text-lg font-bold text-gray-700 truncate" title="${locs.join(', ')}">${locationDisplay}</p><p class="text-xs text-gray-500">存放地點</p></div>
+          </div>`;
+        div.onclick = () => { closeModal(); document.getElementById('edit-filter-input').value = name; switchView('edit'); };
+        div.ondblclick = (e) => { e.stopPropagation(); openCartDetailsModal(name, groups[name]); };
         list.appendChild(div);
       });
     }
@@ -453,22 +423,15 @@
     function renderCartManagement() {
       const tbody = document.getElementById('cart-mgmt-body');
       tbody.innerHTML = '';
-      const groups = allIpads.reduce((acc, i) => {
-        (acc[i.currentCart] = acc[i.currentCart] || []).push(i);
-        return acc;
-      }, {});
-
-      const sortedCarts = Object.keys(groups).sort((a, b) => {
+      const groups = allIpads.reduce((acc, i) => { (acc[i.currentCart] = acc[i.currentCart] || []).push(i); return acc; }, {});
+      Object.keys(groups).sort((a, b) => {
         const na = parseInt(a.match(/\d+/)?.[0] || 999), nb = parseInt(b.match(/\d+/)?.[0] || 999);
         return na - nb || a.localeCompare(b, 'zh-TW');
-      });
-
-      sortedCarts.forEach(cartName => {
+      }).forEach(cartName => {
         const devices = groups[cartName];
         const locations = [...new Set(devices.map(d => d.currentLocation))];
         const displayLoc = locations.length === 1 ? locations[0] : (locations[0] + (locations.length > 1 ? `(及其他${locations.length - 1}處)` : ''));
         const simpleLoc = locations.length === 1 ? locations[0] : '';
-
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${cartName}</td>
@@ -478,8 +441,7 @@
           </td>
           <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
             <button class="text-primary hover:text-indigo-900 font-bold" onclick="batchUpdateCart('${cartName}')">更新地點</button>
-          </td>
-        `;
+          </td>`;
         tbody.appendChild(tr);
       });
     }
@@ -489,70 +451,47 @@
       const newLoc = input.value.trim();
       if (!newLoc) return showSystemMessage('請輸入存放地點', 'error');
       if (!confirm(`確定要將【${cartName}】內的所有 iPad 移動到【${newLoc}】嗎？`)) return;
-
       let updatedCount = 0;
       allIpads.forEach(ipad => {
         if (ipad.currentCart === cartName) {
           ipad.currentLocation = newLoc;
+          dirtyIds.add(ipad.id);
           if (ipadsMap[ipad.id.toUpperCase()]) ipadsMap[ipad.id.toUpperCase()].currentLocation = newLoc;
           updatedCount++;
         }
       });
-
-      showSystemMessage(`已暫存 ${updatedCount} 筆資料更新，請記得點擊「儲存變更到雲端」`, 'secondary');
-      renderCartOverview();
-      renderCartManagement();
-      renderEditTable();
+      showSystemMessage(`已暫存 ${updatedCount} 筆更新，請點「儲存變更到雲端」`, 'secondary');
+      renderCartOverview(); renderCartManagement(); renderEditTable();
     };
 
     function renderEditTable() {
       const tbody = document.getElementById('edit-table-body');
       const filter = document.getElementById('edit-filter-input').value.toLowerCase();
       tbody.innerHTML = '';
-
-      const filtered = allIpads.filter(i =>
-        !filter || i.id.toLowerCase().includes(filter) || i.currentCart.toLowerCase().includes(filter) || i.currentLocation.toLowerCase().includes(filter)
-      );
-
+      const filtered = allIpads.filter(i => !filter || i.id.toLowerCase().includes(filter) || i.currentCart.toLowerCase().includes(filter) || i.currentLocation.toLowerCase().includes(filter));
       filtered.sort((a, b) => {
         const k = currentSort.key, d = currentSort.direction === 'asc' ? 1 : -1;
-        if (k === 'id') {
-          const na = parseInt(a.id.match(/\d+/g)?.slice(-1)[0] || 0), nb = parseInt(b.id.match(/\d+/g)?.slice(-1)[0] || 0);
-          if (na !== nb) return (na - nb) * d;
-        }
+        if (k === 'id') { const na = parseInt(a.id.match(/\d+/g)?.slice(-1)[0] || 0), nb = parseInt(b.id.match(/\d+/g)?.slice(-1)[0] || 0); if (na !== nb) return (na - nb) * d; }
         return a[k].localeCompare(b[k], 'zh-TW') * d;
       });
-
       const uniqueCarts = getUniqueCarts();
-
       filtered.forEach(i => {
         const row = tbody.insertRow();
         row.className = 'hover:bg-gray-100 transition';
-
-        let optionsHtml = uniqueCarts.map(c =>
-          `<option value="${c}" ${c === i.currentCart ? 'selected' : ''}>${c}</option>`
-        ).join('');
-        if (!uniqueCarts.includes(i.currentCart)) {
-          optionsHtml += `<option value="${i.currentCart}" selected>${i.currentCart}</option>`;
-        }
-
+        let optionsHtml = uniqueCarts.map(c => `<option value="${c}" ${c === i.currentCart ? 'selected' : ''}>${c}</option>`).join('');
+        if (!uniqueCarts.includes(i.currentCart)) optionsHtml += `<option value="${i.currentCart}" selected>${i.currentCart}</option>`;
         row.innerHTML = `
           <td class="px-6 py-4 text-sm font-medium text-gray-900">${i.id}</td>
           <td class="px-6 py-4 text-sm text-gray-500">${i.assignedCart}</td>
-          <td class="px-6 py-1">
-            <select data-id="${i.id}" data-key="currentCart" class="w-full p-2 border border-gray-300 rounded focus:border-primary bg-white">
-              ${optionsHtml}
-            </select>
-          </td>
-          <td class="px-6 py-1"><input type="text" value="${i.currentLocation}" data-id="${i.id}" data-key="currentLocation" class="w-full p-2 border border-gray-300 rounded focus:border-secondary"></td>
-        `;
+          <td class="px-6 py-1"><select data-id="${i.id}" data-key="currentCart" class="w-full p-2 border border-gray-300 rounded focus:border-primary bg-white">${optionsHtml}</select></td>
+          <td class="px-6 py-1"><input type="text" value="${i.currentLocation}" data-id="${i.id}" data-key="currentLocation" class="w-full p-2 border border-gray-300 rounded focus:border-secondary"></td>`;
       });
-
       tbody.querySelectorAll('input, select').forEach(elm => {
         elm.addEventListener('change', (e) => {
           const t = allIpads.find(x => x.id === e.target.dataset.id);
           if (t) {
             t[e.target.dataset.key] = e.target.value.trim();
+            dirtyIds.add(t.id);
             if (ipadsMap[t.id.toUpperCase()]) ipadsMap[t.id.toUpperCase()][e.target.dataset.key] = e.target.value.trim();
             if (e.target.dataset.key === 'currentCart') renderCartManagement();
             showSystemMessage(`暫存: ${t.id}，請記得儲存`, 'secondary');
@@ -561,29 +500,22 @@
       });
     }
 
-    function switchView(view) {
-      const views = ['dashboard', 'carts', 'edit'];
-      views.forEach(v => {
+    window.switchView = function(view) {
+      ['dashboard', 'carts', 'edit'].forEach(v => {
         const el = document.getElementById(`${v}-view`);
         const btn = document.getElementById(`tab-${v}`);
-        if (v === view) {
-          el.classList.remove('hidden');
-          btn.className = btn.className.replace('border-transparent text-gray-500', 'border-primary text-primary');
-        } else {
-          el.classList.add('hidden');
-          btn.className = btn.className.replace('border-primary text-primary', 'border-transparent text-gray-500');
-        }
+        if (v === view) { el.classList.remove('hidden'); btn.className = btn.className.replace('border-transparent text-gray-500', 'border-primary text-primary'); }
+        else { el.classList.add('hidden'); btn.className = btn.className.replace('border-primary text-primary', 'border-transparent text-gray-500'); }
       });
       if (view === 'edit') renderEditTable();
       if (view === 'carts') renderCartManagement();
       if (view === 'dashboard') renderCartOverview();
-    }
+    };
 
     function openCartDetailsModal(name, items) {
       document.getElementById('modal-cart-title').textContent = name;
       document.getElementById('modal-ipad-count').textContent = items.length;
-      const list = document.getElementById('modal-ipad-list');
-      list.innerHTML = items.sort((a, b) => a.id.localeCompare(b.id)).map(i =>
+      document.getElementById('modal-ipad-list').innerHTML = items.sort((a, b) => a.id.localeCompare(b.id)).map(i =>
         `<div class="p-2 bg-white border rounded flex justify-between"><span class="font-mono">${i.id}</span><span class="text-xs font-bold text-primary">${i.currentLocation}</span></div>`
       ).join('');
       const m = document.getElementById('cart-detail-modal');
@@ -596,15 +528,11 @@
       document.getElementById('update-ipad-id').textContent = i.id;
       document.getElementById('display-assigned-cart').textContent = i.assignedCart;
       document.getElementById('new-current-location').value = i.currentLocation;
-
       const select = document.getElementById('new-current-cart');
       const uniqueCarts = getUniqueCarts();
-      let optionsHtml = uniqueCarts.map(c =>
-        `<option value="${c}" ${c === i.currentCart ? 'selected' : ''}>${c}</option>`
-      ).join('');
+      let optionsHtml = uniqueCarts.map(c => `<option value="${c}" ${c === i.currentCart ? 'selected' : ''}>${c}</option>`).join('');
       if (!uniqueCarts.includes(i.currentCart)) optionsHtml += `<option value="${i.currentCart}" selected>${i.currentCart}</option>`;
       select.innerHTML = optionsHtml;
-
       const m = document.getElementById('update-location-modal');
       m.classList.remove('hidden');
       void m.offsetWidth;
@@ -617,7 +545,7 @@
         setTimeout(() => m.classList.add('hidden'), 300);
       });
     }
-
+    window.closeModal = closeModal;
     window.closeUpdateModal = closeModal;
     window.clearEditFilter = () => { document.getElementById('edit-filter-input').value = ''; renderEditTable(); };
 
@@ -630,23 +558,17 @@
       a.click();
     };
 
-    window.addEventListener('load', initializeData);
-
-    document.getElementById('search-button').addEventListener('click', () =>
-      simulateSearch(document.getElementById('ipad-search-input').value)
-    );
-
-    document.querySelectorAll('.sortable-header').forEach(h =>
-      h.addEventListener('click', (e) => {
-        const k = e.currentTarget.dataset.sortKey;
-        currentSort = { key: k, direction: currentSort.key === k && currentSort.direction === 'asc' ? 'desc' : 'asc' };
-        renderEditTable();
-      })
-    );
-
+    // --- 事件綁定 ---
+    window.addEventListener('load', () => initializeData());
+    document.getElementById('search-button').addEventListener('click', () => simulateSearch(document.getElementById('ipad-search-input').value));
+    document.getElementById('ipad-search-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') simulateSearch(e.target.value); });
+    document.querySelectorAll('.sortable-header').forEach(h => h.addEventListener('click', (e) => {
+      const k = e.currentTarget.dataset.sortKey;
+      currentSort = { key: k, direction: currentSort.key === k && currentSort.direction === 'asc' ? 'desc' : 'asc' };
+      renderEditTable();
+    }));
     document.getElementById('confirm-update-button').addEventListener('click', () => {
-      const c = document.getElementById('new-current-cart').value.trim(),
-            l = document.getElementById('new-current-location').value.trim();
+      const c = document.getElementById('new-current-cart').value.trim(), l = document.getElementById('new-current-location').value.trim();
       if (c && l) updateSingleIpadCloud(currentEditingIpadId, c, l);
       else showSystemMessage('欄位不可為空', 'error');
     });
