@@ -40,12 +40,27 @@
 
   <div class="container mx-auto p-4 md:p-8">
     <header class="mb-6 border-b pb-4">
-      <div class="flex justify-between items-center flex-wrap">
+      <div class="flex justify-between items-center flex-wrap gap-2">
         <h1 class="text-3xl font-extrabold text-primary flex items-center">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"></path><line x1="2" y1="20" x2="2.01" y2="20"></line></svg>
           iPad 資產管理儀表板
         </h1>
-        <div id="env-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-gray-200 text-gray-600">連線中...</div>
+        <div class="flex items-center gap-3">
+          <!-- 登入狀態 -->
+          <div id="auth-area" class="flex items-center gap-2">
+            <button id="login-btn" onclick="doLogin()" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm transition flex items-center gap-2">
+              <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              Google 登入
+            </button>
+            <div id="user-info" class="hidden flex items-center gap-2">
+              <img id="user-avatar" class="w-8 h-8 rounded-full" src="" alt="">
+              <span id="user-name" class="text-sm font-medium text-gray-700"></span>
+              <span id="admin-badge" class="hidden px-2 py-0.5 text-xs font-bold rounded-full bg-primary/10 text-primary">管理員</span>
+              <button onclick="doLogout()" class="text-gray-400 hover:text-red-500 text-sm ml-1" title="登出">✕</button>
+            </div>
+          </div>
+          <div id="env-badge" class="px-3 py-1 text-xs font-bold rounded-full bg-gray-200 text-gray-600">連線中...</div>
+        </div>
       </div>
       <p id="system-message" class="text-sm text-red-600 mt-1 h-5"></p>
     </header>
@@ -200,6 +215,7 @@
     // --- Firebase ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
     import { getFirestore, collection, getDocs, doc, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+    import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
 
     const app = initializeApp({
       apiKey: "AIzaSyClniX_uQNPDRC8bTLZP-s3-aGB6466t1c",
@@ -210,14 +226,81 @@
       appId: "1:726498300688:web:903d43c66c35b74e3e05d3"
     });
     const db = getFirestore(app);
+    const auth = getAuth(app);
     const COLLECTION = "ipad-assets";
+
+    // --- 管理員白名單 ---
+    const ADMIN_EMAILS = [
+      "m72900024@gmail.com"
+    ];
 
     // --- 全域變數 ---
     let allIpads = [];
     let ipadsMap = {};
     let currentEditingIpadId = null;
     let currentSort = { key: 'id', direction: 'asc' };
-    let dirtyIds = new Set(); // 追蹤有修改的 iPad
+    let dirtyIds = new Set();
+    let currentUser = null;
+    let isAdmin = false;
+
+    // --- 權限檢查 ---
+    function checkAdmin() {
+      return currentUser && ADMIN_EMAILS.includes(currentUser.email);
+    }
+
+    function requireAdmin(actionName) {
+      if (!isAdmin) {
+        if (!currentUser) {
+          showSystemMessage('請先登入 Google 帳號才能' + actionName, 'error');
+        } else {
+          showSystemMessage(`帳號 ${currentUser.email} 沒有編輯權限`, 'error');
+        }
+        return false;
+      }
+      return true;
+    }
+
+    // --- Google 登入/登出 ---
+    window.doLogin = async function() {
+      try {
+        await signInWithPopup(auth, new GoogleAuthProvider());
+      } catch (e) {
+        if (e.code !== 'auth/popup-closed-by-user') {
+          showSystemMessage('登入失敗: ' + e.message, 'error');
+        }
+      }
+    };
+
+    window.doLogout = async function() {
+      await signOut(auth);
+    };
+
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      isAdmin = checkAdmin();
+      updateAuthUI();
+    });
+
+    function updateAuthUI() {
+      const loginBtn = document.getElementById('login-btn');
+      const userInfo = document.getElementById('user-info');
+      const adminBadge = document.getElementById('admin-badge');
+
+      if (currentUser) {
+        loginBtn.classList.add('hidden');
+        userInfo.classList.remove('hidden');
+        document.getElementById('user-avatar').src = currentUser.photoURL || '';
+        document.getElementById('user-name').textContent = currentUser.displayName || currentUser.email;
+        if (isAdmin) {
+          adminBadge.classList.remove('hidden');
+        } else {
+          adminBadge.classList.add('hidden');
+        }
+      } else {
+        loginBtn.classList.remove('hidden');
+        userInfo.classList.add('hidden');
+      }
+    }
 
     // --- Firebase API ---
     async function firebaseGetAll() {
@@ -231,7 +314,6 @@
     }
 
     async function firebaseSaveAll() {
-      // 只存有修改的
       const toSave = dirtyIds.size > 0 ? allIpads.filter(i => dirtyIds.has(i.id)) : allIpads;
       const BATCH_SIZE = 400;
       for (let start = 0; start < toSave.length; start += BATCH_SIZE) {
@@ -275,7 +357,6 @@
       renderEditTable();
       toggleLoading(false);
       dirtyIds.clear();
-
       const badge = document.getElementById('env-badge');
       badge.textContent = '🔥 Firebase 線上模式';
       badge.className = 'px-3 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700';
@@ -283,6 +364,7 @@
     }
 
     window.saveAllDataToCloud = async function() {
+      if (!requireAdmin('儲存')) return;
       if (!confirm('確定要儲存變更嗎？')) return;
       toggleLoading(true, "正在儲存到 Firebase...");
       try {
@@ -295,6 +377,7 @@
     };
 
     async function updateSingleIpadCloud(ipadId, newCart, newLocation) {
+      if (!requireAdmin('更新')) return;
       toggleLoading(true, "正在更新...");
       try {
         await firebaseUpdateSingle(ipadId, newCart, newLocation);
@@ -367,7 +450,10 @@
         idEl.textContent = `編號: ${target.id}`;
         locEl.textContent = `目前充電車: ${target.currentCart} (存放於: ${target.currentLocation})`;
         resultEl.classList.add('bg-secondary/10', 'border-secondary');
-        document.getElementById('change-location-button').onclick = () => showUpdateModal(target);
+        document.getElementById('change-location-button').onclick = () => {
+          if (!requireAdmin('更改位置')) return;
+          showUpdateModal(target);
+        };
         changeBtnContainer.classList.remove('hidden');
       } else {
         idEl.textContent = `查詢: ${queryId}`;
@@ -447,6 +533,7 @@
     }
 
     window.batchUpdateCart = (cartName) => {
+      if (!requireAdmin('批量更新')) return;
       const input = document.getElementById(`loc-input-${cartName}`);
       const newLoc = input.value.trim();
       if (!newLoc) return showSystemMessage('請輸入存放地點', 'error');
@@ -488,6 +575,7 @@
       });
       tbody.querySelectorAll('input, select').forEach(elm => {
         elm.addEventListener('change', (e) => {
+          if (!requireAdmin('編輯')) { e.target.value = allIpads.find(x => x.id === e.target.dataset.id)?.[e.target.dataset.key] || ''; return; }
           const t = allIpads.find(x => x.id === e.target.dataset.id);
           if (t) {
             t[e.target.dataset.key] = e.target.value.trim();
