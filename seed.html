@@ -3,12 +3,17 @@
 <body style="font-family:sans-serif;padding:2em">
 <h1>📦 iPad 資料匯入工具</h1>
 <p>點擊按鈕將 CSV 資料寫入 Firestore（只需執行一次）</p>
-<button id="btn" style="font-size:1.5em;padding:1em 2em;cursor:pointer">開始匯入</button>
+<div id="auth-area" style="margin-bottom:1em">
+  <button id="login-btn" style="font-size:1.1em;padding:0.5em 1.5em;cursor:pointer">🔐 先登入 Google</button>
+  <span id="user-status" style="margin-left:1em;color:gray"></span>
+</div>
+<button id="btn" style="font-size:1.5em;padding:1em 2em;cursor:pointer" disabled>請先登入</button>
 <pre id="log" style="background:#f0f0f0;padding:1em;max-height:60vh;overflow:auto"></pre>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
 import { getFirestore, doc, writeBatch } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+import { getAuth, signInWithPopup, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
 
 const app = initializeApp({
   apiKey: "AIzaSyClniX_uQNPDRC8bTLZP-s3-aGB6466t1c",
@@ -19,7 +24,34 @@ const app = initializeApp({
   appId: "1:726498300688:web:903d43c66c35b74e3e05d3"
 });
 const db = getFirestore(app);
+const auth = getAuth(app);
 const COLLECTION = "ipad-assets";
+const ADMIN_EMAILS = ["m72900024@gmail.com"];
+
+// Auth
+document.getElementById('login-btn').onclick = () => signInWithPopup(auth, new GoogleAuthProvider());
+onAuthStateChanged(auth, (user) => {
+  const btn = document.getElementById('btn');
+  const status = document.getElementById('user-status');
+  const loginBtn = document.getElementById('login-btn');
+  if (user && ADMIN_EMAILS.includes(user.email)) {
+    loginBtn.style.display = 'none';
+    status.textContent = `✅ ${user.displayName} (管理員)`;
+    status.style.color = 'green';
+    btn.disabled = false;
+    btn.textContent = '開始匯入';
+  } else if (user) {
+    loginBtn.style.display = 'none';
+    status.textContent = `❌ ${user.email} 沒有權限`;
+    status.style.color = 'red';
+    btn.disabled = true;
+  } else {
+    loginBtn.style.display = '';
+    status.textContent = '';
+    btn.disabled = true;
+    btn.textContent = '請先登入';
+  }
+});
 
 const csvData = `YZES_IPAD9_001,充電車1,充電車1,410
 YZES_IPAD9_002,充電車1,充電車1,410

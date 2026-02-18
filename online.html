@@ -77,6 +77,9 @@
         <li class="mr-2">
           <button id="tab-edit" onclick="switchView('edit')" class="inline-block p-4 border-b-2 border-transparent text-gray-500 font-semibold rounded-t-lg hover:text-gray-600 transition duration-150">數據編輯模式</button>
         </li>
+        <li class="mr-2">
+          <button id="tab-logs" onclick="switchView('logs')" class="inline-block p-4 border-b-2 border-transparent text-gray-500 font-semibold rounded-t-lg hover:text-gray-600 transition duration-150">📋 操作紀錄</button>
+        </li>
       </ul>
     </div>
 
@@ -163,6 +166,16 @@
           </table>
         </div>
       </div>
+      <!-- 視圖 4: 操作紀錄 -->
+      <div id="logs-view" class="hidden bg-white p-6 rounded-xl card-shadow">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+          <h2 class="text-2xl font-semibold text-gray-800">📋 操作紀錄</h2>
+          <button onclick="loadLogs()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg text-sm transition">重新整理</button>
+        </div>
+        <div id="logs-container" class="space-y-2 max-h-[70vh] overflow-y-auto">
+          <p class="text-gray-400 text-center py-8">載入中...</p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -212,7 +225,7 @@
   <script type="module">
     // --- Firebase ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-    import { getFirestore, collection, getDocs, doc, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+    import { getFirestore, collection, getDocs, doc, updateDoc, writeBatch, addDoc, query, orderBy, limit as fsLimit, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
     import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
 
     const app = initializeApp({
@@ -226,6 +239,7 @@
     const db = getFirestore(app);
     const auth = getAuth(app);
     const COLLECTION = "ipad-assets";
+    const LOG_COLLECTION = "ipad-logs";
 
     // --- 管理員白名單 ---
     const ADMIN_EMAILS = [
@@ -298,6 +312,26 @@
         loginBtn.classList.remove('hidden');
         userInfo.classList.add('hidden');
       }
+    }
+
+    // --- 操作紀錄 ---
+    async function addLog(action, detail) {
+      try {
+        await addDoc(collection(db, LOG_COLLECTION), {
+          action,
+          detail,
+          user: currentUser?.email || '未知',
+          userName: currentUser?.displayName || '',
+          timestamp: serverTimestamp(),
+          localTime: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })
+        });
+      } catch (e) { console.warn('Log 寫入失敗:', e); }
+    }
+
+    async function fetchLogs(count = 50) {
+      const q = query(collection(db, LOG_COLLECTION), orderBy('timestamp', 'desc'), fsLimit(count));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     }
 
     // --- Firebase API ---
@@ -379,6 +413,7 @@
       toggleLoading(true, "正在更新...");
       try {
         await firebaseUpdateSingle(ipadId, newCart, newLocation);
+        await addLog('更新單台', `${ipadId} → ${newCart} / ${newLocation}`);
         const target = allIpads.find(i => i.id.toUpperCase() === ipadId.toUpperCase());
         if (target) {
           target.currentCart = newCart;
@@ -594,6 +629,7 @@
           batch.update(doc(db, COLLECTION, ipad.id), { currentCart: cartName, currentLocation: newLoc });
         });
         await batch.commit();
+        await addLog('搬移充電車', `${cartName} (${devices.length}台) → ${newLoc}`);
         renderCartOverview();
         renderCartManagement();
         renderEditTable();
@@ -626,6 +662,7 @@
           });
           await batch.commit();
         }
+        await addLog('全部歸回', `所有充電車 (${allIpads.length}台) → 創意教室`);
         renderCartOverview();
         renderCartManagement();
         renderEditTable();
@@ -693,8 +730,37 @@
       });
     }
 
+    window.loadLogs = async function() {
+      const container = document.getElementById('logs-container');
+      container.innerHTML = '<p class="text-gray-400 text-center py-4">載入中...</p>';
+      try {
+        const logs = await fetchLogs(100);
+        if (logs.length === 0) {
+          container.innerHTML = '<p class="text-gray-400 text-center py-8">尚無操作紀錄</p>';
+          return;
+        }
+        container.innerHTML = logs.map(log => `
+          <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+            <div class="flex-shrink-0 w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-lg">
+              ${log.action.includes('搬移') ? '🚚' : log.action.includes('歸回') ? '🏠' : log.action.includes('單台') ? '📱' : '📝'}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-start">
+                <p class="font-bold text-gray-800">${log.action}</p>
+                <p class="text-xs text-gray-400 flex-shrink-0">${log.localTime || ''}</p>
+              </div>
+              <p class="text-sm text-gray-600">${log.detail}</p>
+              <p class="text-xs text-gray-400 mt-1">👤 ${log.userName || log.user}</p>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-center py-4">載入失敗: ${e.message}</p>`;
+      }
+    };
+
     window.switchView = function(view) {
-      ['dashboard', 'carts', 'edit'].forEach(v => {
+      ['dashboard', 'carts', 'edit', 'logs'].forEach(v => {
         const el = document.getElementById(`${v}-view`);
         const btn = document.getElementById(`tab-${v}`);
         if (v === view) { el.classList.remove('hidden'); btn.className = btn.className.replace('border-transparent text-gray-500', 'border-primary text-primary'); }
@@ -703,6 +769,7 @@
       if (view === 'edit') renderEditTable();
       if (view === 'carts') renderCartManagement();
       if (view === 'dashboard') renderCartOverview();
+      if (view === 'logs') loadLogs();
     };
 
     function openCartDetailsModal(name, items) {
