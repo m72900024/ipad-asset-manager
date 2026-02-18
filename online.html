@@ -121,23 +121,21 @@
       </div>
 
       <!-- 視圖 2: 充電車管理 -->
-      <div id="carts-view" class="hidden bg-white p-6 rounded-xl card-shadow">
-        <div class="flex justify-between items-center mb-4 border-b pb-2">
-          <h2 class="text-2xl font-semibold text-gray-800">充電車地點管理</h2>
-          <p class="text-sm text-gray-500">此處修改會同步更新該車內所有 iPad 的存放地點</p>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-              <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">充電車名稱</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">設備數量</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">目前存放地點</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
-              </tr>
-            </thead>
-            <tbody id="cart-mgmt-body" class="bg-white divide-y divide-gray-200"></tbody>
-          </table>
+      <div id="carts-view" class="hidden space-y-6">
+        <div class="bg-white p-6 rounded-xl card-shadow">
+          <div class="flex justify-between items-center mb-4 border-b pb-2 flex-wrap gap-2">
+            <h2 class="text-2xl font-semibold text-gray-800">🚚 充電車搬移</h2>
+            <button onclick="returnAllCarts()" class="bg-danger hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg text-sm transition">🏠 全部歸回創意教室</button>
+          </div>
+          <p class="text-sm text-gray-500 mb-4">選擇新地點後按「搬移」，整車所有 iPad 立即同步更新到 Firebase</p>
+          
+          <!-- 常用地點快選說明 -->
+          <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+            <p class="text-xs text-gray-500 mb-2">💡 常用地點快選（點擊自動填入）：</p>
+            <div id="quick-locations" class="flex flex-wrap gap-2"></div>
+          </div>
+
+          <div id="cart-mgmt-cards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
         </div>
       </div>
 
@@ -506,33 +504,140 @@
       });
     }
 
+    function getKnownLocations() {
+      const locs = new Set();
+      allIpads.forEach(i => { if (i.currentLocation) locs.add(i.currentLocation); });
+      // 確保常用地點在前面
+      const priority = ['創意教室', '圖書館', '教務處'];
+      const sorted = [...priority.filter(p => locs.has(p) || true), ...Array.from(locs).filter(l => !priority.includes(l)).sort()];
+      return [...new Set(sorted)];
+    }
+
     function renderCartManagement() {
-      const tbody = document.getElementById('cart-mgmt-body');
-      tbody.innerHTML = '';
-      const groups = allIpads.reduce((acc, i) => { (acc[i.currentCart] = acc[i.currentCart] || []).push(i); return acc; }, {});
-      Object.keys(groups).sort((a, b) => {
+      const container = document.getElementById('cart-mgmt-cards');
+      container.innerHTML = '';
+
+      // 常用地點快選按鈕
+      const quickLocs = document.getElementById('quick-locations');
+      quickLocs.innerHTML = '';
+      getKnownLocations().slice(0, 12).forEach(loc => {
+        const btn = document.createElement('button');
+        btn.className = 'px-3 py-1 bg-white border border-gray-300 rounded-full text-xs hover:bg-primary hover:text-white transition';
+        btn.textContent = loc;
+        btn.onclick = () => {
+          document.querySelectorAll('.cart-loc-input').forEach(input => {
+            if (document.activeElement === input || input.dataset.focused === 'true') input.value = loc;
+          });
+        };
+        quickLocs.appendChild(btn);
+      });
+
+      // 以 assignedCart 為群組（充電車本身）
+      const cartNames = [...new Set(allIpads.map(i => i.assignedCart))].sort((a, b) => {
         const na = parseInt(a.match(/\d+/)?.[0] || 999), nb = parseInt(b.match(/\d+/)?.[0] || 999);
         return na - nb || a.localeCompare(b, 'zh-TW');
-      }).forEach(cartName => {
-        const devices = groups[cartName];
+      });
+
+      cartNames.forEach(cartName => {
+        const devices = allIpads.filter(i => i.assignedCart === cartName);
         const locations = [...new Set(devices.map(d => d.currentLocation))];
-        const displayLoc = locations.length === 1 ? locations[0] : (locations[0] + (locations.length > 1 ? `(及其他${locations.length - 1}處)` : ''));
-        const simpleLoc = locations.length === 1 ? locations[0] : '';
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${cartName}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${devices.length} 台</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-            <input type="text" value="${simpleLoc}" placeholder="${displayLoc}" id="loc-input-${cartName}" class="w-full p-2 border border-gray-300 rounded focus:border-primary text-sm">
-          </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-            <button class="text-primary hover:text-indigo-900 font-bold" onclick="batchUpdateCart('${cartName}')">更新地點</button>
-          </td>`;
-        tbody.appendChild(tr);
+        const currentLoc = locations.length === 1 ? locations[0] : `${locations[0]} 等 ${locations.length} 處`;
+        const mainLoc = locations[0] || '';
+
+        const card = document.createElement('div');
+        card.className = 'bg-white border-2 border-gray-200 p-5 rounded-xl hover:border-primary transition';
+        card.innerHTML = `
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <h3 class="text-lg font-bold text-gray-900">${cartName}</h3>
+              <p class="text-sm text-gray-500">${devices.length} 台</p>
+            </div>
+            <span class="px-2 py-1 text-xs font-bold rounded-full ${locations.length === 1 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
+              ${locations.length === 1 ? '📍 ' + currentLoc : '⚠️ 分散'}
+            </span>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" value="${mainLoc}" placeholder="輸入新地點" 
+              id="loc-input-${cartName}" 
+              class="cart-loc-input flex-1 p-2 border border-gray-300 rounded-lg focus:border-primary text-sm"
+              onfocus="this.dataset.focused='true'" onblur="setTimeout(()=>this.dataset.focused='false',200)">
+            <button onclick="moveCart('${cartName}')" 
+              class="bg-primary hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg text-sm transition whitespace-nowrap">
+              搬移 🚚
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
       });
     }
 
+    // 搬移整車 — 直接存 Firebase
+    window.moveCart = async (cartName) => {
+      if (!requireAdmin('搬移充電車')) return;
+      const input = document.getElementById(`loc-input-${cartName}`);
+      const newLoc = input.value.trim();
+      if (!newLoc) return showSystemMessage('請輸入新地點', 'error');
+
+      const devices = allIpads.filter(i => i.assignedCart === cartName);
+      if (!confirm(`確定要把【${cartName}】(${devices.length} 台) 搬到【${newLoc}】嗎？`)) return;
+
+      toggleLoading(true, `正在搬移 ${cartName}...`);
+      try {
+        const batch = writeBatch(db);
+        devices.forEach(ipad => {
+          ipad.currentCart = cartName;
+          ipad.currentLocation = newLoc;
+          if (ipadsMap[ipad.id.toUpperCase()]) {
+            ipadsMap[ipad.id.toUpperCase()].currentCart = cartName;
+            ipadsMap[ipad.id.toUpperCase()].currentLocation = newLoc;
+          }
+          batch.update(doc(db, COLLECTION, ipad.id), { currentCart: cartName, currentLocation: newLoc });
+        });
+        await batch.commit();
+        renderCartOverview();
+        renderCartManagement();
+        renderEditTable();
+        showSystemMessage(`✅ ${cartName} 已搬到【${newLoc}】，共 ${devices.length} 台`, 'success');
+      } catch (e) {
+        showSystemMessage('搬移失敗: ' + e.message, 'error');
+      }
+      toggleLoading(false);
+    };
+
+    // 全部歸回創意教室
+    window.returnAllCarts = async () => {
+      if (!requireAdmin('全部歸回')) return;
+      if (!confirm('確定要把所有充電車歸回【創意教室】嗎？\n\n這會更新全部 ' + allIpads.length + ' 台 iPad 的位置！')) return;
+
+      toggleLoading(true, "正在歸回所有充電車...");
+      try {
+        const BATCH_SIZE = 400;
+        for (let start = 0; start < allIpads.length; start += BATCH_SIZE) {
+          const batch = writeBatch(db);
+          const chunk = allIpads.slice(start, start + BATCH_SIZE);
+          chunk.forEach(ipad => {
+            ipad.currentCart = ipad.assignedCart;
+            ipad.currentLocation = '創意教室';
+            if (ipadsMap[ipad.id.toUpperCase()]) {
+              ipadsMap[ipad.id.toUpperCase()].currentCart = ipad.assignedCart;
+              ipadsMap[ipad.id.toUpperCase()].currentLocation = '創意教室';
+            }
+            batch.update(doc(db, COLLECTION, ipad.id), { currentCart: ipad.assignedCart, currentLocation: '創意教室' });
+          });
+          await batch.commit();
+        }
+        renderCartOverview();
+        renderCartManagement();
+        renderEditTable();
+        showSystemMessage(`✅ 全部 ${allIpads.length} 台已歸回創意教室`, 'success');
+      } catch (e) {
+        showSystemMessage('歸回失敗: ' + e.message, 'error');
+      }
+      toggleLoading(false);
+    };
+
     window.batchUpdateCart = (cartName) => {
+      // legacy fallback
       if (!requireAdmin('批量更新')) return;
       const input = document.getElementById(`loc-input-${cartName}`);
       const newLoc = input.value.trim();
