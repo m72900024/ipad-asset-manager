@@ -354,12 +354,15 @@
         <div id="add-batch-form" class="hidden space-y-4">
           <div>
             <label class="block text-sm font-semibold text-gray-700 mb-1">批次資料</label>
+            <div class="mb-2 p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-600">
+              <p class="font-semibold text-gray-700 mb-1">📝 格式說明（逗號或 Tab 分隔，每行一筆）：</p>
+              <p>3 欄：<code class="bg-white px-1 rounded">編號, 隸屬充電車, 存放地點</code></p>
+              <p>4 欄：<code class="bg-white px-1 rounded">編號, 隸屬充電車, 目前充電車, 存放地點</code></p>
+              <p class="mt-1 text-gray-400">範例：<code class="bg-white px-1 rounded">YZES_IPAD9_484, 充電車18, 501</code></p>
+            </div>
             <textarea id="add-batch-input" rows="8"
               class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono focus:ring-primary focus:border-primary"
-              placeholder="每行一筆，格式（逗號或 Tab 分隔）：&#10;平板編號, 隸屬充電車, 存放地點&#10;&#10;範例：&#10;YZES_IPAD9_484, 充電車18, 501&#10;YZES_IPAD9_485, 充電車18, 501&#10;YZES_IPAD10_490, 充電車19, 307"></textarea>
-            <p class="text-xs text-gray-400 mt-1">
-              支援 3 欄（編號,充電車,地點）或 4 欄（編號,隸屬車,目前車,地點）
-            </p>
+              placeholder="在此貼上資料..."></textarea>
           </div>
           <div id="batch-preview" class="hidden">
             <p class="text-sm font-semibold text-gray-700 mb-2">預覽（<span id="batch-count">0</span> 筆）</p>
