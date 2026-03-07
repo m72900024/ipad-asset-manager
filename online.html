@@ -967,15 +967,35 @@
       const items = mdmParse(raw);
       if (!items.length) { alert('解析不到資料'); return; }
 
-      // 從 Firebase allData 查詢（若已載入），否則用靜態資料
+      // 從 Firebase allData 查詢（寬鬆比對）
       mdmLastResults = items.map((item, i) => {
         const special = mdmGetSpecial(item.name);
         if (special) return { index: i+1, ...item, ...special, found: true };
-        // 查 allData（Firebase 資料）
-        if (typeof allData !== 'undefined' && allData) {
-          const rec = allData.find(d => d.id === item.name);
-          if (rec) return { index: i+1, ...item, cart: rec.currentLocation, room: rec.currentLocation, found: true, special: false };
+
+        // 寬鬆比對函數：正規化後比較
+        function mdmNormalize(s) {
+          return s.toUpperCase()
+            .replace(/[_\-\s]/g, '')   // 移除底線、連字號、空格
+            .replace(/^YZES/,'')         // 移除前綴 YZES
+            .replace(/^YG2022/,'')       // 移除前綴 YG2022
+            .replace(/^IPAD[0-9]*/,'')   // 移除 IPAD9/IPAD10 等
+            .replace(/^0+/,'');          // 移除前導零（001→1）
         }
+        const normInput = mdmNormalize(item.name);
+
+        // 查 Firebase 資料（ipadsMap 或 allIpads）
+        let rec = null;
+        if (typeof ipadsMap !== 'undefined' && ipadsMap) {
+          // 1. 完整比對（不分大小寫）
+          rec = ipadsMap[item.name.toUpperCase()];
+          // 2. 正規化比對
+          if (!rec) {
+            const keys = Object.keys(ipadsMap);
+            const found = keys.find(k => mdmNormalize(k) === normInput);
+            if (found) rec = ipadsMap[found];
+          }
+        }
+        if (rec) return { index: i+1, ...item, cart: rec.assignedCart || rec.currentCart, room: rec.currentLocation, found: true, special: false };
         return { index: i+1, ...item, cart: null, room: null, found: false, special: false };
       });
 
