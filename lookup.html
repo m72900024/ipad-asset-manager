@@ -114,6 +114,14 @@ const IPAD_DATA = {"YZES_IPAD9_002": {"cart": "充電車1", "room": "410"}, "YZE
     return results;
   }
 
+  // 特殊設備規則
+  function getSpecialInfo(name) {
+    if (name.startsWith('YG2022iPAD')) {
+      return { cart: '漁光分校', room: '漁光分校', special: true };
+    }
+    return null;
+  }
+
   let lastResults = [];
 
   function doLookup() {
@@ -124,14 +132,16 @@ const IPAD_DATA = {"YZES_IPAD9_002": {"cart": "充電車1", "room": "410"}, "YZE
     if (!items.length) { alert('解析不到資料，請確認格式'); return; }
 
     lastResults = items.map((item, i) => {
-      const info = IPAD_DATA[item.name];
+      const special = getSpecialInfo(item.name);
+      const info = special || IPAD_DATA[item.name];
       return {
         index: i + 1,
         name: item.name,
         syncTime: item.syncTime,
         cart: info?.cart || null,
         room: info?.room || null,
-        found: !!info
+        found: !!info,
+        special: !!special
       };
     });
 
@@ -170,8 +180,9 @@ const IPAD_DATA = {"YZES_IPAD9_002": {"cart": "充電車1", "room": "410"}, "YZE
   }
 
   function renderGroups(results) {
-    const found = results.filter(r => r.found);
-    const notFound = results.filter(r => !r.found);
+    const found = results.filter(r => r.found && !r.special);
+    const special = results.filter(r => r.special);
+    const notFound = results.filter(r => !r.found && !r.special);
 
     // 按充電車分組
     const groups = {};
@@ -205,11 +216,23 @@ const IPAD_DATA = {"YZES_IPAD9_002": {"cart": "充電車1", "room": "410"}, "YZE
       </div>
     `).join('');
 
+    if (special.length) {
+      html += `
+        <div class="cart-group bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 class="font-bold text-amber-600 mb-2">🏫 漁光分校（${special.length} 台）</h3>
+          <p class="text-xs text-gray-500 mb-2">屬漁光分校設備，不在充電車系統內</p>
+          ${special.map(r => `
+            <div class="text-sm font-mono text-amber-700">${r.name}</div>
+          `).join('')}
+        </div>
+      `;
+    }
+
     if (notFound.length) {
       html += `
         <div class="cart-group bg-red-50 border border-red-200 rounded-xl p-4">
           <h3 class="font-bold text-red-500 mb-2">⚠ 查無紀錄（${notFound.length} 台）</h3>
-          <p class="text-xs text-gray-500 mb-2">可能為 YG2022 系列（需查 Firebase）或資料未同步</p>
+          <p class="text-xs text-gray-500 mb-2">可能為資料未同步，或新增設備尚未登錄</p>
           ${notFound.map(r => `
             <div class="text-sm font-mono text-red-700">${r.name}</div>
           `).join('')}
