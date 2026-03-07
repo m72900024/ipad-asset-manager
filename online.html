@@ -299,18 +299,25 @@
 
   <!-- Add Device Modal -->
   <div id="add-device-modal" class="modal-backdrop hidden" onclick="if(event.target===this)closeAddDeviceModal()">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md m-4 modal-content">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 modal-content">
       <div class="p-6">
-        <div class="flex justify-between items-center border-b pb-3 mb-5">
+        <div class="flex justify-between items-center border-b pb-3 mb-4">
           <h3 class="text-xl font-bold text-gray-800">➕ 新增設備</h3>
           <button class="text-gray-400 hover:text-gray-600 text-xl" onclick="closeAddDeviceModal()">✕</button>
         </div>
-        <div class="space-y-4">
+
+        <!-- 切換：單一 / 批次 -->
+        <div class="flex mb-4 bg-gray-100 rounded-lg p-1">
+          <button id="add-mode-single" onclick="switchAddMode('single')" class="flex-1 py-2 rounded-md text-sm font-semibold bg-white shadow text-primary transition">📱 單一新增</button>
+          <button id="add-mode-batch" onclick="switchAddMode('batch')" class="flex-1 py-2 rounded-md text-sm font-semibold text-gray-500 transition">📋 批次新增</button>
+        </div>
+
+        <!-- 單一新增 -->
+        <div id="add-single-form" class="space-y-4">
           <div>
             <label class="block text-sm font-semibold text-gray-700 mb-1">平板編號 <span class="text-red-500">*</span></label>
             <input type="text" id="add-ipad-id" placeholder="例：YZES_IPAD9_484"
               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary font-mono text-sm">
-            <p class="text-xs text-gray-400 mt-1">建議格式：YZES_IPAD9_XXX 或 YZES_IPAD10_XXX</p>
           </div>
           <div>
             <label class="block text-sm font-semibold text-gray-700 mb-1">隸屬充電車 <span class="text-red-500">*</span></label>
@@ -318,7 +325,7 @@
               <input type="text" id="add-assigned-cart" placeholder="例：充電車14"
                 class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary text-sm">
               <select id="add-cart-select" onchange="syncCartSelect()" class="p-3 border border-gray-300 rounded-lg text-sm bg-white">
-                <option value="">── 從現有選 ──</option>
+                <option value="">── 選現有 ──</option>
               </select>
             </div>
           </div>
@@ -333,18 +340,49 @@
               <input type="text" id="add-location" placeholder="例：410 或 創意教室"
                 class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary text-sm">
               <select id="add-location-select" onchange="syncLocationSelect()" class="p-3 border border-gray-300 rounded-lg text-sm bg-white">
-                <option value="">── 從現有選 ──</option>
+                <option value="">── 選現有 ──</option>
               </select>
             </div>
           </div>
+          <div class="flex gap-3 mt-2">
+            <button onclick="submitAddDevice()" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-lg transition">✅ 新增到 Firebase</button>
+            <button onclick="closeAddDeviceModal()" class="px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-lg transition">取消</button>
+          </div>
         </div>
+
+        <!-- 批次新增 -->
+        <div id="add-batch-form" class="hidden space-y-4">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">批次資料</label>
+            <textarea id="add-batch-input" rows="8"
+              class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono focus:ring-primary focus:border-primary"
+              placeholder="每行一筆，格式（逗號或 Tab 分隔）：&#10;平板編號, 隸屬充電車, 存放地點&#10;&#10;範例：&#10;YZES_IPAD9_484, 充電車18, 501&#10;YZES_IPAD9_485, 充電車18, 501&#10;YZES_IPAD10_490, 充電車19, 307"></textarea>
+            <p class="text-xs text-gray-400 mt-1">
+              支援 3 欄（編號,充電車,地點）或 4 欄（編號,隸屬車,目前車,地點）
+            </p>
+          </div>
+          <div id="batch-preview" class="hidden">
+            <p class="text-sm font-semibold text-gray-700 mb-2">預覽（<span id="batch-count">0</span> 筆）</p>
+            <div class="max-h-40 overflow-y-auto border rounded-lg">
+              <table class="w-full text-xs">
+                <thead class="bg-gray-50 sticky top-0"><tr>
+                  <th class="px-2 py-1 text-left">編號</th>
+                  <th class="px-2 py-1 text-left">隸屬充電車</th>
+                  <th class="px-2 py-1 text-left">目前充電車</th>
+                  <th class="px-2 py-1 text-left">存放地點</th>
+                  <th class="px-2 py-1 text-left">狀態</th>
+                </tr></thead>
+                <tbody id="batch-preview-body" class="divide-y"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="flex gap-3">
+            <button onclick="previewBatch()" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition">👁️ 預覽</button>
+            <button onclick="submitBatchAdd()" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-lg transition">✅ 全部新增</button>
+          </div>
+        </div>
+
         <div id="add-device-error" class="hidden mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600"></div>
-        <div class="flex gap-3 mt-6">
-          <button onclick="submitAddDevice()" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-lg transition">
-            ✅ 新增到 Firebase
-          </button>
-          <button onclick="closeAddDeviceModal()" class="px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-lg transition">取消</button>
-        </div>
       </div>
     </div>
   </div>
@@ -1095,6 +1133,109 @@
         errEl.classList.remove('hidden');
       }
     };
+
+    // ===== 新增設備：模式切換 =====
+    window.switchAddMode = function(mode) {
+      const singleBtn = document.getElementById('add-mode-single');
+      const batchBtn = document.getElementById('add-mode-batch');
+      const singleForm = document.getElementById('add-single-form');
+      const batchForm = document.getElementById('add-batch-form');
+      document.getElementById('add-device-error').classList.add('hidden');
+      if (mode === 'single') {
+        singleBtn.className = 'flex-1 py-2 rounded-md text-sm font-semibold bg-white shadow text-primary transition';
+        batchBtn.className = 'flex-1 py-2 rounded-md text-sm font-semibold text-gray-500 transition';
+        singleForm.classList.remove('hidden');
+        batchForm.classList.add('hidden');
+      } else {
+        batchBtn.className = 'flex-1 py-2 rounded-md text-sm font-semibold bg-white shadow text-primary transition';
+        singleBtn.className = 'flex-1 py-2 rounded-md text-sm font-semibold text-gray-500 transition';
+        batchForm.classList.remove('hidden');
+        singleForm.classList.add('hidden');
+      }
+    };
+
+    // 解析批次資料
+    function parseBatchInput(raw) {
+      return raw.trim().split('\n').map(line => {
+        line = line.trim();
+        if (!line) return null;
+        const parts = line.split(/[,\t]/).map(s => s.trim()).filter(Boolean);
+        if (parts.length < 3) return null;
+        if (parts.length >= 4) {
+          return { id: parts[0], assignedCart: parts[1], currentCart: parts[2], currentLocation: parts[3] };
+        }
+        return { id: parts[0], assignedCart: parts[1], currentCart: parts[1], currentLocation: parts[2] };
+      }).filter(Boolean);
+    }
+
+    window.previewBatch = function() {
+      const raw = document.getElementById('add-batch-input').value;
+      const errEl = document.getElementById('add-device-error');
+      if (!raw.trim()) { errEl.textContent='請輸入資料'; errEl.classList.remove('hidden'); return; }
+      const items = parseBatchInput(raw);
+      if (!items.length) { errEl.textContent='無法解析，請確認格式：編號, 充電車, 地點'; errEl.classList.remove('hidden'); return; }
+      errEl.classList.add('hidden');
+
+      document.getElementById('batch-count').textContent = items.length;
+      document.getElementById('batch-preview-body').innerHTML = items.map(it => {
+        const exists = ipadsMap[it.id.toUpperCase()];
+        return `<tr class="${exists ? 'bg-red-50' : ''}">
+          <td class="px-2 py-1 font-mono">${it.id}</td>
+          <td class="px-2 py-1">${it.assignedCart}</td>
+          <td class="px-2 py-1">${it.currentCart}</td>
+          <td class="px-2 py-1">${it.currentLocation}</td>
+          <td class="px-2 py-1">${exists ? '<span style="color:#ef4444">⚠ 已存在</span>' : '<span style="color:#059669">✓ 新增</span>'}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('batch-preview').classList.remove('hidden');
+    };
+
+    window.submitBatchAdd = async function() {
+      if (!isAdmin) { alert('僅管理員可新增'); return; }
+      const raw = document.getElementById('add-batch-input').value;
+      const items = parseBatchInput(raw);
+      const errEl = document.getElementById('add-device-error');
+      if (!items.length) { errEl.textContent='無資料'; errEl.classList.remove('hidden'); return; }
+
+      // 過濾已存在
+      const newItems = items.filter(it => !ipadsMap[it.id.toUpperCase()]);
+      const skipped = items.length - newItems.length;
+      if (!newItems.length) { errEl.textContent='全部都已存在，沒有可新增的設備'; errEl.classList.remove('hidden'); return; }
+
+      const confirm = window.confirm(`即將新增 ${newItems.length} 筆設備${skipped ? `（跳過 ${skipped} 筆已存在）` : ''}，確定？`);
+      if (!confirm) return;
+
+      try {
+        const BATCH_SIZE = 400;
+        for (let start = 0; start < newItems.length; start += BATCH_SIZE) {
+          const batch = writeBatch(db);
+          const chunk = newItems.slice(start, start + BATCH_SIZE);
+          for (const item of chunk) {
+            batch.set(doc(db, COLLECTION, item.id), item);
+          }
+          await batch.commit();
+        }
+
+        // 更新本地資料
+        for (const item of newItems) {
+          allIpads.push(item);
+          ipadsMap[item.id.toUpperCase()] = item;
+        }
+
+        // 記 log
+        await addLog('批次新增', `${newItems.length} 筆`, newItems.map(i => i.id).join(', '));
+
+        closeAddDeviceModal();
+        renderCartOverview();
+        renderEditTable();
+        alert(`✅ 成功新增 ${newItems.length} 筆！${skipped ? ` 跳過 ${skipped} 筆已存在` : ''}`);
+      } catch(e) {
+        errEl.textContent = '批次新增失敗：' + e.message;
+        errEl.classList.remove('hidden');
+      }
+    };
+    // ===== END 批次新增 =====
+
     // ===== END 新增設備 =====
 
     // ===== MDM 查詢功能 =====
