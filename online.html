@@ -948,7 +948,12 @@
         let optionsHtml = uniqueCarts.map(c => `<option value="${c}" ${c === i.currentCart ? 'selected' : ''}>${c}</option>`).join('');
         if (!uniqueCarts.includes(i.currentCart)) optionsHtml += `<option value="${i.currentCart}" selected>${i.currentCart}</option>`;
         row.innerHTML = `
-          <td class="px-6 py-4 text-sm font-medium text-gray-900">${i.id}</td>
+          <td class="px-6 py-4 text-sm font-medium text-gray-900">
+            <div class="flex items-center gap-1">
+              <span>${i.id}</span>
+              <button onclick="renameDevice('${i.id}')" class="text-gray-300 hover:text-primary text-xs ml-1" title="修改編號">✏️</button>
+            </div>
+          </td>
           <td class="px-6 py-4 text-sm text-gray-500">${i.assignedCart}</td>
           <td class="px-6 py-1"><select data-id="${i.id}" data-key="currentCart" class="w-full p-2 border border-gray-300 rounded focus:border-primary bg-white">${optionsHtml}</select></td>
           <td class="px-6 py-1"><input type="text" value="${i.currentLocation}" data-id="${i.id}" data-key="currentLocation" class="w-full p-2 border border-gray-300 rounded focus:border-secondary"></td>`;
@@ -1294,6 +1299,53 @@
     };
     // ===== END 快速生成 =====
     // ===== END 批次新增 =====
+
+
+    // ===== 修改設備編號 =====
+    window.renameDevice = async function(oldId) {
+      if (!requireAdmin('修改編號')) return;
+
+      const newId = prompt(`修改設備編號\n\n目前編號：${oldId}\n\n請輸入新編號：`, oldId);
+      if (!newId || newId.trim() === oldId) return;
+      const trimId = newId.trim();
+
+      // 檢查新編號是否已存在
+      if (ipadsMap[trimId.toUpperCase()] && trimId.toUpperCase() !== oldId.toUpperCase()) {
+        alert(`❌ 編號 ${trimId} 已被使用！`);
+        return;
+      }
+
+      if (!confirm(`確定將 ${oldId} 改為 ${trimId}？\n\n此操作會：\n1. 建立新編號 ${trimId}\n2. 刪除舊編號 ${oldId}`)) return;
+
+      try {
+        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
+        const oldData = ipadsMap[oldId.toUpperCase()];
+        if (!oldData) { alert('找不到該設備'); return; }
+
+        // 複製資料到新 ID
+        const newData = { ...oldData, id: trimId };
+        await setDoc(doc(db, COLLECTION, trimId), newData);
+
+        // 刪除舊 ID
+        await deleteDoc(doc(db, COLLECTION, oldId));
+
+        // 更新本地資料
+        const idx = allIpads.findIndex(x => x.id === oldId);
+        if (idx >= 0) allIpads[idx] = newData;
+        delete ipadsMap[oldId.toUpperCase()];
+        ipadsMap[trimId.toUpperCase()] = newData;
+
+        // 記 log
+        await addLog('修改編號', trimId, `${oldId} → ${trimId}`);
+
+        renderCartOverview();
+        renderEditTable();
+        showSystemMessage(`✅ 編號已修改：${oldId} → ${trimId}`, 'secondary');
+      } catch(e) {
+        alert('修改失敗：' + e.message);
+      }
+    };
+    // ===== END 修改編號 =====
 
     // ===== END 新增設備 =====
 
