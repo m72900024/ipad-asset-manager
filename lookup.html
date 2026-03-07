@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>未使用載具查詢工具</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, 'Noto Sans TC', sans-serif; }
+    .result-row:hover { background: #f0f9ff; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .not-found { color: #ef4444; background: #fef2f2; }
+    .found { color: #059669; background: #ecfdf5; }
+    textarea { resize: vertical; }
+    #group-view .cart-group { break-inside: avoid; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 md:p-8">
+  <div class="max-w-5xl mx-auto">
+    <header class="mb-6">
+      <h1 class="text-2xl font-bold text-indigo-600 flex items-center gap-2">
+        🔍 MDM 未使用載具查詢
+      </h1>
+      <p class="text-gray-500 text-sm mt-1">從 MDM 複製未使用載具清單，貼上後自動查詢充電車與班級位置</p>
+      <a href="index.html" class="text-xs text-indigo-400 hover:underline">← 回主系統</a>
+    </header>
+
+    <div class="bg-white rounded-xl shadow p-6 mb-6">
+      <label class="block text-sm font-semibold text-gray-700 mb-2">📋 貼上 MDM 未使用載具清單</label>
+      <textarea id="mdm-input" rows="10" 
+        class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono focus:ring-indigo-500 focus:border-indigo-500"
+        placeholder="直接從 MDM 網站複製整欄資料貼上，例如：&#10;YG2022iPAD-001	2026/3/5 上午 09:33:00&#10;YZES_IPAD9_325	2026/2/24 下午 08:02:03&#10;..."></textarea>
+      <div class="flex gap-3 mt-3">
+        <button onclick="doLookup()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition">
+          🔍 查詢位置
+        </button>
+        <button onclick="clearAll()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition">
+          清除
+        </button>
+        <label class="flex items-center gap-2 text-sm text-gray-600 ml-auto">
+          <input type="checkbox" id="toggle-view" onchange="toggleView()" class="rounded">
+          依充電車分組顯示
+        </label>
+      </div>
+    </div>
+
+    <!-- 結果統計 -->
+    <div id="stats" class="hidden mb-4 grid grid-cols-3 gap-3">
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <p class="text-3xl font-bold text-gray-800" id="stat-total">0</p>
+        <p class="text-xs text-gray-500 mt-1">總筆數</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <p class="text-3xl font-bold text-emerald-600" id="stat-found">0</p>
+        <p class="text-xs text-gray-500 mt-1">找到紀錄</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <p class="text-3xl font-bold text-red-500" id="stat-notfound">0</p>
+        <p class="text-xs text-gray-500 mt-1">查無紀錄（需手動確認）</p>
+      </div>
+    </div>
+
+    <!-- 列表視圖 -->
+    <div id="list-view" class="hidden bg-white rounded-xl shadow overflow-hidden mb-6">
+      <div class="flex justify-between items-center p-4 border-b">
+        <h2 class="font-semibold text-gray-700">查詢結果</h2>
+        <button onclick="copyResult()" class="text-sm text-indigo-600 hover:underline">📋 複製結果</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+            <tr>
+              <th class="px-4 py-3 text-left">#</th>
+              <th class="px-4 py-3 text-left">載具名稱</th>
+              <th class="px-4 py-3 text-left">MDM 同步時間</th>
+              <th class="px-4 py-3 text-left">充電車</th>
+              <th class="px-4 py-3 text-left">班級</th>
+              <th class="px-4 py-3 text-left">狀態</th>
+            </tr>
+          </thead>
+          <tbody id="result-table" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 分組視圖 -->
+    <div id="group-view" class="hidden mb-6">
+      <div id="group-content" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+    </div>
+
+    <!-- 資料說明 -->
+    <div class="text-xs text-gray-400 text-center mt-4">
+      資料來源：ipad-asset-manager 離線資料（含 438 筆）。YG2022 系列請至線上版 Firebase 確認。
+    </div>
+  </div>
+
+  <script>
+const IPAD_DATA = {"YZES_IPAD9_002": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_003": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_004": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_005": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_006": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_007": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_008": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_009": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_010": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_011": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_012": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_013": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_014": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_015": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_016": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_017": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_018": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_019": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_020": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_021": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_022": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_023": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_024": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_025": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_026": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_027": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_028": {"cart": "充電車1", "room": "410"}, "YZES_IPAD9_029": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_030": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_031": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_032": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_033": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_034": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_035": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_036": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_037": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_038": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_039": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_040": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_041": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_042": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_043": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_044": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_045": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_046": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_047": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_048": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_049": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_050": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_051": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_052": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_053": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_054": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_055": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_056": {"cart": "充電車2", "room": "604"}, "YZES_IPAD9_057": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_058": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_059": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_060": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_061": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_062": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_063": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_064": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_065": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_066": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_067": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_068": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_069": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_070": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_071": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_072": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_073": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_074": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_075": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_076": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_077": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_078": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_079": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_080": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_081": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_082": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_083": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_084": {"cart": "充電車3", "room": "603"}, "YZES_IPAD9_085": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_086": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_087": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_088": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_089": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_090": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_091": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_092": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_093": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_094": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_095": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_096": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_097": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_098": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_099": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_100": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_101": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_102": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_103": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_104": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_105": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_106": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_107": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_108": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_109": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_110": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_111": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_112": {"cart": "充電車4", "room": "408"}, "YZES_IPAD9_113": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_114": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_115": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_116": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_117": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_118": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_119": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_120": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_121": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_122": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_123": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_124": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_125": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_126": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_127": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_128": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_129": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_130": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_131": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_132": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_133": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_134": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_135": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_136": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_137": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_138": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_139": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_140": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_141": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_142": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_143": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_144": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_145": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_146": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_147": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_148": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_149": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_150": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_151": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_152": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_153": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_154": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_155": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_156": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_157": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_158": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_159": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_160": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_161": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_162": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_163": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_164": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_165": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_166": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_167": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_168": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_169": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_170": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_171": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_172": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_173": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_174": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_175": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_176": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_177": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_178": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_179": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_180": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_181": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_182": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_183": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_184": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_185": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_186": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_187": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_188": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_189": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_190": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_191": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_192": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_193": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_194": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_195": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_196": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_197": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_198": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_199": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_200": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_201": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_202": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_203": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_204": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_205": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_206": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_207": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_208": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_209": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_210": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_211": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_212": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_213": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_214": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_215": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_216": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_217": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_218": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_219": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_220": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_221": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_222": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_223": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_224": {"cart": "充電車8", "room": "302"}, "YZES_IPAD9_225": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_226": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_227": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_228": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_229": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_230": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_231": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_232": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_233": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_234": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_235": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_236": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_237": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_238": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_239": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_240": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_241": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_242": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_243": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_244": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_245": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_246": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_247": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_248": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_249": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_250": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_251": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_252": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_253": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_254": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_255": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_256": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_257": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_258": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_259": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_260": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_261": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_262": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_263": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_264": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_265": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_266": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_267": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_268": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_269": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_270": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_271": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_272": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_273": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_274": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_275": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_276": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_277": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_278": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_279": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_280": {"cart": "充電車10", "room": "107"}, "YZES_IPAD9_309": {"cart": "充電車6", "room": "609"}, "YZES_IPAD9_310": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_311": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_312": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_313": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_314": {"cart": "充電車7", "room": "201"}, "YZES_IPAD9_317": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_318": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_321": {"cart": "充電車9", "room": "306"}, "YZES_IPAD9_322": {"cart": "充電車5", "room": "501"}, "YZES_IPAD9_333": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_334": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_335": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_336": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_337": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_338": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_339": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_340": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_341": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_342": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_343": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_344": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_345": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_346": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_347": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_348": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_349": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_350": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_351": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_352": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_353": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_354": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_355": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_356": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_357": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_358": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_359": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_360": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_361": {"cart": "充電車13", "room": "506"}, "YZES_IPAD9_364": {"cart": "充電車13", "room": "506"}, "YZES_IPAD10_365": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_366": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_367": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_368": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_369": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_370": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_371": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_372": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_373": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_374": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_375": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_376": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_377": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_378": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_379": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_380": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_381": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_382": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_383": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_384": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_385": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_386": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_387": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_388": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_389": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_390": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_391": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_392": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_393": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_394": {"cart": "充電車14", "room": "307"}, "YZES_IPAD10_395": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_396": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_397": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_398": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_399": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_400": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_401": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_402": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_403": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_404": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_405": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_406": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_407": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_408": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_409": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_410": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_411": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_412": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_413": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_414": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_415": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_416": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_417": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_418": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_419": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_420": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_421": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_422": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_423": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_424": {"cart": "充電車15", "room": "606"}, "YZES_IPAD10_425": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_426": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_427": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_428": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_429": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_430": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_431": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_432": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_433": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_434": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_435": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_436": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_437": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_438": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_439": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_440": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_441": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_442": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_443": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_444": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_445": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_446": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_447": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_448": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_449": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_450": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_451": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_452": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_453": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_454": {"cart": "充電車16", "room": "610"}, "YZES_IPAD10_455": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_456": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_457": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_458": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_459": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_460": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_461": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_462": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_463": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_464": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_465": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_466": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_467": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_468": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_469": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_470": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_471": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_472": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_473": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_474": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_475": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_476": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_477": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_478": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_479": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_480": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_481": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_482": {"cart": "充電車17", "room": "411"}, "YZES_IPAD10_483": {"cart": "充電車17", "room": "411`;"}};
+  // 解析 MDM 清單
+  function parseMDMInput(raw) {
+    const lines = raw.trim().split('\n');
+    const results = [];
+    for (let line of lines) {
+      line = line.trim();
+      if (!line) continue;
+      // 跳過標題列
+      if (line.includes('未使用載具名稱') || line.includes('原生MDM')) continue;
+      // 分割：tab 或多空格
+      const parts = line.split(/\t|  +/);
+      const name = parts[0]?.trim();
+      const syncTime = parts.slice(1).join(' ').trim() || '-';
+      if (name) results.push({ name, syncTime });
+    }
+    return results;
+  }
+
+  let lastResults = [];
+
+  function doLookup() {
+    const raw = document.getElementById('mdm-input').value;
+    if (!raw.trim()) { alert('請先貼上 MDM 清單'); return; }
+
+    const items = parseMDMInput(raw);
+    if (!items.length) { alert('解析不到資料，請確認格式'); return; }
+
+    lastResults = items.map((item, i) => {
+      const info = IPAD_DATA[item.name];
+      return {
+        index: i + 1,
+        name: item.name,
+        syncTime: item.syncTime,
+        cart: info?.cart || null,
+        room: info?.room || null,
+        found: !!info
+      };
+    });
+
+    renderStats(lastResults);
+    renderList(lastResults);
+    renderGroups(lastResults);
+
+    document.getElementById('stats').classList.remove('hidden');
+    const isGroup = document.getElementById('toggle-view').checked;
+    document.getElementById('list-view').classList.toggle('hidden', isGroup);
+    document.getElementById('group-view').classList.toggle('hidden', !isGroup);
+  }
+
+  function renderStats(results) {
+    const found = results.filter(r => r.found).length;
+    document.getElementById('stat-total').textContent = results.length;
+    document.getElementById('stat-found').textContent = found;
+    document.getElementById('stat-notfound').textContent = results.length - found;
+  }
+
+  function renderList(results) {
+    const tbody = document.getElementById('result-table');
+    tbody.innerHTML = results.map(r => `
+      <tr class="result-row ${r.found ? '' : 'bg-red-50/30'}">
+        <td class="px-4 py-3 text-gray-400">${r.index}</td>
+        <td class="px-4 py-3 font-mono font-semibold text-gray-800">${r.name}</td>
+        <td class="px-4 py-3 text-gray-500 text-xs">${r.syncTime}</td>
+        <td class="px-4 py-3 font-bold ${r.found ? 'text-indigo-600' : 'text-gray-300'}">${r.cart || '—'}</td>
+        <td class="px-4 py-3 font-bold ${r.found ? 'text-emerald-600' : 'text-gray-300'}">${r.room ? r.room + ' 班' : '—'}</td>
+        <td class="px-4 py-3">
+          <span class="badge ${r.found ? 'found' : 'not-found'}">${r.found ? '✓ 找到' : '⚠ 查無'}</span>
+        </td>
+      </tr>
+    `).join('');
+    document.getElementById('list-view').classList.remove('hidden');
+  }
+
+  function renderGroups(results) {
+    const found = results.filter(r => r.found);
+    const notFound = results.filter(r => !r.found);
+
+    // 按充電車分組
+    const groups = {};
+    for (const r of found) {
+      const key = r.cart;
+      if (!groups[key]) groups[key] = { cart: r.cart, room: r.room, items: [] };
+      groups[key].items.push(r);
+    }
+
+    const sortedGroups = Object.values(groups).sort((a, b) => {
+      const na = parseInt(a.cart.replace(/[^0-9]/g, '')) || 0;
+      const nb = parseInt(b.cart.replace(/[^0-9]/g, '')) || 0;
+      return na - nb;
+    });
+
+    let html = sortedGroups.map(g => `
+      <div class="cart-group bg-white rounded-xl shadow p-4">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="font-bold text-indigo-600 text-lg">${g.cart}</h3>
+          <span class="badge found">${g.room} 班</span>
+        </div>
+        <p class="text-xs text-gray-400 mb-2">${g.items.length} 台未使用</p>
+        <div class="space-y-1">
+          ${g.items.map(r => `
+            <div class="flex justify-between text-sm">
+              <span class="font-mono text-gray-700">${r.name}</span>
+              <span class="text-xs text-gray-400">${r.syncTime}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+
+    if (notFound.length) {
+      html += `
+        <div class="cart-group bg-red-50 border border-red-200 rounded-xl p-4">
+          <h3 class="font-bold text-red-500 mb-2">⚠ 查無紀錄（${notFound.length} 台）</h3>
+          <p class="text-xs text-gray-500 mb-2">可能為 YG2022 系列（需查 Firebase）或資料未同步</p>
+          ${notFound.map(r => `
+            <div class="text-sm font-mono text-red-700">${r.name}</div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    document.getElementById('group-content').innerHTML = html;
+  }
+
+  function toggleView() {
+    const isGroup = document.getElementById('toggle-view').checked;
+    document.getElementById('list-view').classList.toggle('hidden', isGroup);
+    document.getElementById('group-view').classList.toggle('hidden', !isGroup);
+  }
+
+  function copyResult() {
+    if (!lastResults.length) return;
+    const lines = lastResults.map(r =>
+      `${r.name}\t${r.syncTime}\t${r.cart || '查無'}\t${r.room ? r.room+'班' : '查無'}`
+    );
+    navigator.clipboard.writeText(lines.join('\n'));
+    alert('已複製到剪貼板！');
+  }
+
+  function clearAll() {
+    document.getElementById('mdm-input').value = '';
+    document.getElementById('stats').classList.add('hidden');
+    document.getElementById('list-view').classList.add('hidden');
+    document.getElementById('group-view').classList.add('hidden');
+    lastResults = [];
+  }
+  </script>
+</body>
+</html>
