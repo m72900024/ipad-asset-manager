@@ -208,9 +208,12 @@
 
       <!-- 視圖 3: 編輯表格 -->
       <div id="edit-view" class="hidden bg-white p-6 rounded-xl card-shadow">
-        <div class="flex justify-between items-center mb-4 border-b pb-2">
+        <div class="flex justify-between items-center mb-4 border-b pb-2 flex-wrap gap-2">
           <h2 class="text-2xl font-semibold text-gray-800">批量編輯</h2>
-          <button onclick="saveAllDataToCloud()" class="bg-primary hover:bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg text-sm transition shadow-lg">儲存變更到雲端</button>
+          <div class="flex gap-2">
+            <button onclick="openAddDeviceModal()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg text-sm transition shadow">➕ 新增設備</button>
+            <button onclick="saveAllDataToCloud()" class="bg-primary hover:bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg text-sm transition shadow-lg">儲存變更到雲端</button>
+          </div>
         </div>
         <div class="mb-4 flex space-x-2">
           <input type="text" id="edit-filter-input" placeholder="篩選: 輸入充電車名、地點或 iPad 編號" class="w-full p-3 border border-gray-300 rounded-lg" oninput="renderEditTable()">
@@ -292,6 +295,59 @@
     </div>
   </div>
 
+
+  <!-- Add Device Modal -->
+  <div id="add-device-modal" class="modal-backdrop hidden" onclick="if(event.target===this)closeAddDeviceModal()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md m-4 modal-content">
+      <div class="p-6">
+        <div class="flex justify-between items-center border-b pb-3 mb-5">
+          <h3 class="text-xl font-bold text-gray-800">➕ 新增設備</h3>
+          <button class="text-gray-400 hover:text-gray-600 text-xl" onclick="closeAddDeviceModal()">✕</button>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">平板編號 <span class="text-red-500">*</span></label>
+            <input type="text" id="add-ipad-id" placeholder="例：YZES_IPAD9_484"
+              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary font-mono text-sm">
+            <p class="text-xs text-gray-400 mt-1">建議格式：YZES_IPAD9_XXX 或 YZES_IPAD10_XXX</p>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">隸屬充電車 <span class="text-red-500">*</span></label>
+            <div class="flex gap-2">
+              <input type="text" id="add-assigned-cart" placeholder="例：充電車14"
+                class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary text-sm">
+              <select id="add-cart-select" onchange="syncCartSelect()" class="p-3 border border-gray-300 rounded-lg text-sm bg-white">
+                <option value="">── 從現有選 ──</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">目前充電車</label>
+            <input type="text" id="add-current-cart" placeholder="預設與隸屬充電車相同"
+              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary text-sm">
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">存放地點 <span class="text-red-500">*</span></label>
+            <div class="flex gap-2">
+              <input type="text" id="add-location" placeholder="例：410 或 創意教室"
+                class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary text-sm">
+              <select id="add-location-select" onchange="syncLocationSelect()" class="p-3 border border-gray-300 rounded-lg text-sm bg-white">
+                <option value="">── 從現有選 ──</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div id="add-device-error" class="hidden mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600"></div>
+        <div class="flex gap-3 mt-6">
+          <button onclick="submitAddDevice()" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-lg transition">
+            ✅ 新增到 Firebase
+          </button>
+          <button onclick="closeAddDeviceModal()" class="px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-lg transition">取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Cart Detail Modal -->
   <div id="cart-detail-modal" class="modal-backdrop hidden" onclick="if(event.target===this)closeModal()">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 modal-content">
@@ -338,7 +394,7 @@
   <script type="module">
     // --- Firebase ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-    import { getFirestore, collection, getDocs, doc, updateDoc, writeBatch, addDoc, query, orderBy, limit as fsLimit, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+    import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, writeBatch, addDoc, query, orderBy, limit as fsLimit, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
     import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
 
     const app = initializeApp({
@@ -946,6 +1002,100 @@
       else showSystemMessage('欄位不可為空', 'error');
     });
   
+
+    // ===== 新增設備功能 =====
+    window.openAddDeviceModal = function() {
+      if (!isAdmin) { alert('僅管理員可新增設備'); return; }
+      // 填入現有充電車清單
+      const cartSel = document.getElementById('add-cart-select');
+      cartSel.innerHTML = '<option value="">── 從現有選 ──</option>';
+      const carts = [...new Set(allIpads.map(i => i.assignedCart).filter(Boolean))].sort((a,b)=>{
+        return (parseInt(a.match(/\d+/)?.[0])||0)-(parseInt(b.match(/\d+/)?.[0])||0);
+      });
+      carts.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; cartSel.appendChild(o); });
+
+      // 填入現有地點清單
+      const locSel = document.getElementById('add-location-select');
+      locSel.innerHTML = '<option value="">── 從現有選 ──</option>';
+      const locs = [...new Set(allIpads.map(i => i.currentLocation).filter(Boolean))].sort();
+      locs.forEach(l => { const o=document.createElement('option'); o.value=l; o.textContent=l; locSel.appendChild(o); });
+
+      // 清空表單
+      ['add-ipad-id','add-assigned-cart','add-current-cart','add-location'].forEach(id => document.getElementById(id).value='');
+      document.getElementById('add-device-error').classList.add('hidden');
+
+      const m = document.getElementById('add-device-modal');
+      m.classList.remove('hidden');
+      setTimeout(() => m.classList.add('modal-open'), 10);
+      document.getElementById('add-ipad-id').focus();
+    };
+
+    window.closeAddDeviceModal = function() {
+      const m = document.getElementById('add-device-modal');
+      m.classList.remove('modal-open');
+      setTimeout(() => m.classList.add('hidden'), 300);
+    };
+
+    window.syncCartSelect = function() {
+      const val = document.getElementById('add-cart-select').value;
+      if (val) {
+        document.getElementById('add-assigned-cart').value = val;
+        if (!document.getElementById('add-current-cart').value) document.getElementById('add-current-cart').value = val;
+      }
+    };
+
+    window.syncLocationSelect = function() {
+      const val = document.getElementById('add-location-select').value;
+      if (val) document.getElementById('add-location').value = val;
+    };
+
+    // 隸屬充電車變更時，自動帶入目前充電車
+    document.addEventListener('DOMContentLoaded', () => {
+      const assignedInput = document.getElementById('add-assigned-cart');
+      if (assignedInput) assignedInput.addEventListener('input', () => {
+        const cur = document.getElementById('add-current-cart');
+        if (!cur.value) cur.value = assignedInput.value;
+      });
+    });
+
+    window.submitAddDevice = async function() {
+      const ipadId = document.getElementById('add-ipad-id').value.trim();
+      const assignedCart = document.getElementById('add-assigned-cart').value.trim();
+      const currentCart = document.getElementById('add-current-cart').value.trim() || assignedCart;
+      const currentLocation = document.getElementById('add-location').value.trim();
+      const errEl = document.getElementById('add-device-error');
+
+      // 驗證
+      if (!ipadId) { errEl.textContent='請輸入平板編號'; errEl.classList.remove('hidden'); return; }
+      if (!assignedCart) { errEl.textContent='請輸入隸屬充電車'; errEl.classList.remove('hidden'); return; }
+      if (!currentLocation) { errEl.textContent='請輸入存放地點'; errEl.classList.remove('hidden'); return; }
+      if (ipadsMap[ipadId.toUpperCase()]) { errEl.textContent=`編號 ${ipadId} 已存在！`; errEl.classList.remove('hidden'); return; }
+      errEl.classList.add('hidden');
+
+      const newDevice = { id: ipadId, assignedCart, currentCart, currentLocation };
+
+      try {
+        // 寫入 Firebase
+        await setDoc(doc(db, COLLECTION, ipadId), newDevice);
+
+        // 更新本地資料
+        allIpads.push(newDevice);
+        ipadsMap[ipadId.toUpperCase()] = newDevice;
+
+        // 寫入 log
+        await addLog('新增', ipadId, `新增設備，隸屬：${assignedCart}，存放：${currentLocation}`);
+
+        closeAddDeviceModal();
+        renderCartOverview();
+        renderEditTable();
+        alert(`✅ ${ipadId} 已成功新增！`);
+      } catch(e) {
+        errEl.textContent = '新增失敗：' + e.message;
+        errEl.classList.remove('hidden');
+      }
+    };
+    // ===== END 新增設備 =====
+
     // ===== MDM 查詢功能 =====
     function mdmGetSpecial(name) {
       if (name.startsWith('YG2022iPAD')) return { cart: '漁光分校', room: '漁光分校', special: true };
