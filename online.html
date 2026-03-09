@@ -170,6 +170,7 @@
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="assignedCart">隸屬充電車</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="currentCart">目前充電車 (編輯)</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="currentLocation">存放地點 (編輯)</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">外借狀態</th>
               </tr>
             </thead>
             <tbody id="edit-table-body" class="bg-white divide-y divide-gray-200"></tbody>
@@ -430,6 +431,31 @@
     </div>
   </div>
 
+  <!-- Loan Modal -->
+  <div id="loan-modal" class="modal-backdrop hidden" onclick="if(event.target===this)closeModal()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm m-4 modal-content">
+      <div class="p-6">
+        <div class="flex justify-between items-center border-b pb-3 mb-4">
+          <h3 class="text-xl font-bold text-gray-800">🏷️ 登記外借</h3>
+          <button class="text-gray-400 hover:text-gray-600" onclick="closeModal()">✕</button>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">iPad: <span id="loan-ipad-id" class="font-bold text-gray-800"></span></p>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">外借老師姓名 <span class="text-red-500">*</span></label>
+            <input type="text" id="loan-teacher-name" placeholder="例：王小明 老師" maxlength="20"
+              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-yellow-400 focus:border-yellow-400 text-sm"
+              onkeydown="if(event.key==='Enter')confirmLoan()">
+          </div>
+          <div class="flex gap-3 pt-2">
+            <button onclick="confirmLoan()" class="flex-1 bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-bold py-3 rounded-lg transition">✅ 確認外借</button>
+            <button onclick="closeModal()" class="px-5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-lg transition">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     // --- Firebase ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
@@ -553,6 +579,11 @@
     async function firebaseUpdateSingle(ipadId, newCart, newLocation) {
       const ref = doc(db, COLLECTION, ipadId);
       await updateDoc(ref, { currentCart: newCart, currentLocation: newLocation });
+    }
+
+    async function firebaseUpdateLoan(ipadId, loanedTo, loanedSince) {
+      const ref = doc(db, COLLECTION, ipadId);
+      await updateDoc(ref, { loanedTo: loanedTo || '', loanedSince: loanedSince || '' });
     }
 
     async function firebaseSaveAll() {
@@ -691,8 +722,13 @@
 
       if (target) {
         idEl.textContent = `編號: ${target.id}`;
-        locEl.textContent = `目前充電車: ${target.currentCart} (存放於: ${target.currentLocation})`;
-        resultEl.classList.add('bg-secondary/10', 'border-secondary');
+        const loanBadge = target.loanedTo ? ` ⚠️ 外借中 → ${target.loanedTo}${target.loanedSince ? '（' + target.loanedSince + '）' : ''}` : '';
+        locEl.textContent = `目前充電車: ${target.currentCart} (存放於: ${target.currentLocation})${loanBadge}`;
+        if (target.loanedTo) {
+          resultEl.classList.add('bg-yellow-50', 'border-yellow-400');
+        } else {
+          resultEl.classList.add('bg-secondary/10', 'border-secondary');
+        }
         document.getElementById('change-location-button').onclick = () => {
           if (!requireAdmin('更改位置')) return;
           showUpdateModal(target);
@@ -734,10 +770,13 @@
         if (isRepair) { iconColor = 'text-danger'; iconPath = 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z'; }
         else if (isSpecial) { iconColor = 'text-secondary'; iconPath = 'M10 20h4V4h-4v16zm-6 0h4V4H4v16zm12 0h4V4h-4v16z'; }
 
+        const loanedCount = items.filter(i => i.loanedTo).length;
+        const loanedBadge = loanedCount > 0 ? `<span class="ml-2 px-2 py-0.5 text-xs font-bold rounded-full bg-yellow-100 text-yellow-700">🏷️ ${loanedCount}台外借中</span>` : '';
         div.innerHTML = `
           <div class="flex items-center space-x-3 mb-3">
             <svg class="h-6 w-6 ${iconColor} flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="${iconPath}"/></svg>
             <h3 class="text-lg font-bold text-gray-900 truncate" title="${name}">${name}</h3>
+            ${loanedBadge}
           </div>
           <div class="flex justify-between items-end">
             <div><p class="text-3xl font-extrabold text-primary">${count}</p><p class="text-xs text-gray-500">數量</p></div>
@@ -919,6 +958,9 @@
         row.className = 'hover:bg-gray-100 transition';
         let optionsHtml = uniqueCarts.map(c => `<option value="${c}" ${c === i.currentCart ? 'selected' : ''}>${c}</option>`).join('');
         if (!uniqueCarts.includes(i.currentCart)) optionsHtml += `<option value="${i.currentCart}" selected>${i.currentCart}</option>`;
+        const loanCell = i.loanedTo
+          ? `<td class="px-4 py-2 text-sm"><div class="flex items-center gap-2 flex-wrap"><span class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-bold rounded-full">🏷️ ${i.loanedTo}</span><span class="text-xs text-gray-400">${i.loanedSince || ''}</span><button onclick="returnIpad('${i.id}')" class="text-xs bg-green-100 hover:bg-green-200 text-green-700 font-bold px-2 py-1 rounded transition">歸還</button></div></td>`
+          : `<td class="px-4 py-2 text-sm"><button onclick="openLoanModal('${i.id}')" class="text-xs bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border border-yellow-300 font-bold px-2 py-1 rounded transition">登記外借</button></td>`;
         row.innerHTML = `
           <td class="px-6 py-4 text-sm font-medium text-gray-900">
             <div class="flex items-center gap-1">
@@ -928,7 +970,8 @@
           </td>
           <td class="px-6 py-4 text-sm text-gray-500">${i.assignedCart}</td>
           <td class="px-6 py-1"><select data-id="${i.id}" data-key="currentCart" class="w-full p-2 border border-gray-300 rounded focus:border-primary bg-white">${optionsHtml}</select></td>
-          <td class="px-6 py-1"><input type="text" value="${i.currentLocation}" data-id="${i.id}" data-key="currentLocation" class="w-full p-2 border border-gray-300 rounded focus:border-secondary"></td>`;
+          <td class="px-6 py-1"><input type="text" value="${i.currentLocation}" data-id="${i.id}" data-key="currentLocation" class="w-full p-2 border border-gray-300 rounded focus:border-secondary"></td>
+          ${loanCell}`;
       });
       tbody.querySelectorAll('input, select').forEach(elm => {
         elm.addEventListener('change', (e) => {
@@ -957,7 +1000,7 @@
         container.innerHTML = logs.map(log => `
           <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
             <div class="flex-shrink-0 w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-lg">
-              ${log.action.includes('搬移') ? '🚚' : log.action.includes('歸回') ? '🏠' : log.action.includes('單台') ? '📱' : '📝'}
+              ${log.action.includes('搬移') ? '🚚' : log.action.includes('歸回') ? '🏠' : log.action.includes('外借') ? '🏷️' : log.action.includes('歸還') ? '✅' : log.action.includes('單台') ? '📱' : '📝'}
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex justify-between items-start">
@@ -990,9 +1033,11 @@
     function openCartDetailsModal(name, items) {
       document.getElementById('modal-cart-title').textContent = name;
       document.getElementById('modal-ipad-count').textContent = items.length;
-      document.getElementById('modal-ipad-list').innerHTML = items.sort((a, b) => a.id.localeCompare(b.id)).map(i =>
-        `<div class="p-2 bg-white border rounded flex justify-between"><span class="font-mono">${i.id}</span><span class="text-xs font-bold text-primary">${i.currentLocation}</span></div>`
-      ).join('');
+      document.getElementById('modal-ipad-list').innerHTML = items.sort((a, b) => a.id.localeCompare(b.id)).map(i => {
+        const loanTag = i.loanedTo ? `<span class="text-xs font-bold text-yellow-600">🏷️ ${i.loanedTo}</span>` : `<span class="text-xs font-bold text-primary">${i.currentLocation}</span>`;
+        const rowClass = i.loanedTo ? 'p-2 bg-yellow-50 border border-yellow-200 rounded flex justify-between' : 'p-2 bg-white border rounded flex justify-between';
+        return `<div class="${rowClass}"><span class="font-mono text-xs">${i.id}</span>${loanTag}</div>`;
+      }).join('');
       const m = document.getElementById('cart-detail-modal');
       m.classList.remove('hidden');
       setTimeout(() => m.classList.add('modal-open'), 10);
@@ -1024,6 +1069,55 @@
     window.closeUpdateModal = closeModal;
     window.clearEditFilter = () => { document.getElementById('edit-filter-input').value = ''; renderEditTable(); };
 
+    // --- 外借功能 ---
+    let currentLoanIpadId = null;
+
+    window.openLoanModal = function(ipadId) {
+      if (!requireAdmin('登記外借')) return;
+      currentLoanIpadId = ipadId;
+      document.getElementById('loan-ipad-id').textContent = ipadId;
+      document.getElementById('loan-teacher-name').value = '';
+      const m = document.getElementById('loan-modal');
+      m.classList.remove('hidden');
+      void m.offsetWidth;
+      m.classList.add('modal-open');
+      setTimeout(() => document.getElementById('loan-teacher-name').focus(), 100);
+    };
+
+    window.confirmLoan = async function() {
+      const teacher = document.getElementById('loan-teacher-name').value.trim();
+      if (!teacher) { document.getElementById('loan-teacher-name').focus(); return; }
+      const ipadId = currentLoanIpadId;
+      const today = new Date().toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit', timeZone: 'Asia/Taipei' }).replace('/', '/');
+      toggleLoading(true, '登記外借中...');
+      try {
+        await firebaseUpdateLoan(ipadId, teacher, today);
+        await addLog('外借登記', `${ipadId} → ${teacher}（${today}）`);
+        const target = allIpads.find(i => i.id === ipadId);
+        if (target) { target.loanedTo = teacher; target.loanedSince = today; if (ipadsMap[ipadId.toUpperCase()]) { ipadsMap[ipadId.toUpperCase()].loanedTo = teacher; ipadsMap[ipadId.toUpperCase()].loanedSince = today; } }
+        renderCartOverview(); renderEditTable();
+        showSystemMessage(`✅ ${ipadId} 已登記外借給 ${teacher}`, 'success');
+        closeModal();
+      } catch (e) { showSystemMessage('外借登記失敗: ' + e.message, 'error'); }
+      toggleLoading(false);
+    };
+
+    window.returnIpad = async function(ipadId) {
+      if (!requireAdmin('歸還')) return;
+      if (!confirm(`確定 ${ipadId} 已歸還？`)) return;
+      toggleLoading(true, '登記歸還中...');
+      try {
+        const target = allIpads.find(i => i.id === ipadId);
+        const teacher = target?.loanedTo || '';
+        await firebaseUpdateLoan(ipadId, '', '');
+        await addLog('歸還登記', `${ipadId} ← ${teacher} 歸還`);
+        if (target) { target.loanedTo = ''; target.loanedSince = ''; if (ipadsMap[ipadId.toUpperCase()]) { ipadsMap[ipadId.toUpperCase()].loanedTo = ''; ipadsMap[ipadId.toUpperCase()].loanedSince = ''; } }
+        renderCartOverview(); renderEditTable();
+        showSystemMessage(`✅ ${ipadId} 已歸還`, 'success');
+      } catch (e) { showSystemMessage('歸還登記失敗: ' + e.message, 'error'); }
+      toggleLoading(false);
+    };
+
     window.exportToCSV = async () => {
       if (!allIpads.length) return showSystemMessage('無資料', 'error');
       showSystemMessage('讀取操作紀錄中...', 'secondary');
@@ -1035,8 +1129,8 @@
 
         const assetRows = [
           `=== ${schoolName} iPad 設備清單（匯出時間：${new Date().toLocaleString('zh-TW', {timeZone:'Asia/Taipei'})}）===`,
-          ['編號', '隸屬充電車', '目前充電車', '目前地點'].join(','),
-          ...allIpads.map(i => [escape(i.id), escape(i.assignedCart), escape(i.currentCart), escape(i.currentLocation)].join(','))
+          ['編號', '隸屬充電車', '目前充電車', '目前地點', '外借狀態', '外借日期'].join(','),
+          ...allIpads.map(i => [escape(i.id), escape(i.assignedCart), escape(i.currentCart), escape(i.currentLocation), escape(i.loanedTo || ''), escape(i.loanedSince || '')].join(','))
         ];
 
         // 操作紀錄
