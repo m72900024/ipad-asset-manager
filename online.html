@@ -1066,25 +1066,29 @@
     window.closeUpdateModal = closeModal;
     window.clearEditFilter = () => { document.getElementById('edit-filter-input').value = ''; renderEditTable(); };
 
-    window.exportToCSV = () => {
+    window.exportToCSV = async () => {
       if (!allIpads.length) return showSystemMessage('無資料', 'error');
-      const csv = ['編號,隸屬,位置,地點', ...allIpads.map(i => `${i.id},${i.assignedCart},${i.currentCart},${i.currentLocation}`)].join('\n');
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: 'text/csv' }));
-      a.download = `iPad_Assets_${new Date().toISOString().split('T')[0]}.csv`;
-      a.click();
-    };
-
-    window.exportLogsToCSV = async () => {
       showSystemMessage('讀取操作紀錄中...', 'secondary');
       try {
-        // 抓全部紀錄（不限筆數）
+        // 設備清單
+        const escape = v => `"${String(v || '').replace(/"/g, '""')}"`;
+        const dateStr = new Date().toISOString().split('T')[0];
+        const schoolName = (window.SCHOOL_CONFIG && window.SCHOOL_CONFIG.schoolName) || 'iPad';
+
+        const assetRows = [
+          `=== ${schoolName} iPad 設備清單（匯出時間：${new Date().toLocaleString('zh-TW', {timeZone:'Asia/Taipei'})}）===`,
+          ['編號', '隸屬充電車', '目前充電車', '目前地點'].join(','),
+          ...allIpads.map(i => [escape(i.id), escape(i.assignedCart), escape(i.currentCart), escape(i.currentLocation)].join(','))
+        ];
+
+        // 操作紀錄
         const q = query(collection(db, LOG_COLLECTION), orderBy('timestamp', 'desc'));
         const snap = await getDocs(q);
         const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (!logs.length) { showSystemMessage('尚無操作紀錄', 'error'); return; }
-        const escape = v => `"${String(v || '').replace(/"/g, '""')}"`;
-        const rows = [
+
+        const logRows = [
+          '',
+          `=== 操作紀錄（共 ${logs.length} 筆）===`,
           ['時間', '動作', '詳情', '操作者', 'Email'].join(','),
           ...logs.map(l => [
             escape(l.localTime || ''),
@@ -1093,16 +1097,20 @@
             escape(l.userName || ''),
             escape(l.user || '')
           ].join(','))
-        ].join('\n');
+        ];
+
+        const csv = [...assetRows, ...logRows].join('\n');
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob(["\ufeff" + rows], { type: 'text/csv' }));
-        a.download = `iPad_Logs_${new Date().toISOString().split('T')[0]}.csv`;
+        a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: 'text/csv' }));
+        a.download = `${schoolName}_iPad_${dateStr}.csv`;
         a.click();
-        showSystemMessage(`✅ 已匯出 ${logs.length} 筆操作紀錄`, 'secondary');
+        showSystemMessage(`✅ 已匯出設備 ${allIpads.length} 台 + 操作紀錄 ${logs.length} 筆`, 'secondary');
       } catch(e) {
         showSystemMessage('匯出失敗：' + e.message, 'error');
       }
     };
+
+    window.exportLogsToCSV = () => exportToCSV(); // 導向同一個匯出
 
     // --- 事件綁定 ---
     window.addEventListener('load', () => initializeData());
