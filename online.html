@@ -279,6 +279,11 @@
 
           <!-- 結果區 -->
           <div id="mdm-result-wrap" class="hidden mt-4">
+            <!-- 操作列 -->
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs text-gray-400" id="mdm-result-label"></span>
+              <button onclick="mdmPrint()" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold py-1.5 px-3 rounded-lg text-sm transition">🖨️ 列印</button>
+            </div>
             <!-- 列表視圖 -->
             <div id="mdm-list-view" class="overflow-x-auto rounded-lg border border-gray-200">
               <div class="flex justify-between items-center px-4 py-2 bg-gray-50 border-b">
@@ -1479,40 +1484,68 @@
         </tr>`).join('');
     }
 
+    function mdmShortNum(name) {
+      const m = name.match(/(\d+)$/);
+      return m ? m[1] : name;
+    }
+
     function mdmRenderGroups() {
       const found = mdmLastResults.filter(r => r.found && !r.special);
       const special = mdmLastResults.filter(r => r.special);
       const notFound = mdmLastResults.filter(r => !r.found && !r.special);
       const groups = {};
       for (const r of found) {
-        if (!groups[r.cart]) groups[r.cart] = { cart: r.cart, room: r.room, items: [] };
-        groups[r.cart].items.push(r);
+        const key = r.cart || '未知';
+        if (!groups[key]) groups[key] = { cart: r.cart, room: r.room, items: [] };
+        groups[key].items.push(r);
       }
-      let html = Object.values(groups).sort((a,b) => {
-        const na = parseInt(a.cart.replace(/[^0-9]/g,''))||0, nb = parseInt(b.cart.replace(/[^0-9]/g,''))||0;
-        return na-nb;
-      }).map(g => `
-        <div style="background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);padding:1rem">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
-            <span style="font-weight:700;color:#4f46e5;font-size:1.1rem">${g.cart}</span>
-            <span style="background:#ecfdf5;color:#059669;padding:2px 8px;border-radius:9999px;font-size:0.75rem;font-weight:600">${g.items.length} 台</span>
+      const sorted = Object.values(groups).sort((a,b) => {
+        const na = parseInt((a.cart||'').replace(/[^0-9]/g,''))||0;
+        const nb = parseInt((b.cart||'').replace(/[^0-9]/g,''))||0;
+        return na - nb;
+      });
+
+      let html = sorted.map(g => `
+        <div class="mdm-cart-card" style="background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);padding:1rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
+            <span style="font-weight:800;color:#4f46e5;font-size:1.05rem">🚚 ${g.cart}</span>
+            <span style="background:#ecfdf5;color:#059669;padding:2px 10px;border-radius:9999px;font-size:0.78rem;font-weight:700">${g.items.length} 台</span>
           </div>
-          <div style="margin-bottom:0.6rem">
-            <span style="display:inline-block;background:#ede9fe;color:#6d28d9;padding:2px 10px;border-radius:9999px;font-size:0.8rem;font-weight:700">🏫 ${g.room ? g.room + ' 班' : '—'}</span>
+          <div style="margin-bottom:0.5rem">
+            <span style="background:#ede9fe;color:#6d28d9;padding:2px 10px;border-radius:9999px;font-size:0.78rem;font-weight:700">📍 ${g.room || '—'}</span>
           </div>
-          ${g.items.map(r => `<div style="font-family:monospace;font-size:0.85rem;color:#374151;padding:2px 0">${r.name}</div>`).join('')}
+          <div style="line-height:2">
+            ${g.items.map(r => `<span title="${r.name}" style="display:inline-block;background:#f3f4f6;border-radius:6px;padding:1px 8px;margin:2px;font-family:monospace;font-size:0.88rem;color:#374151;font-weight:600">${mdmShortNum(r.name)}</span>`).join('')}
+          </div>
         </div>`).join('');
+
       if (special.length) html += `
-        <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:1rem">
-          <div style="font-weight:700;color:#b45309;margin-bottom:0.5rem">🏫 ${special[0] && special[0].cart ? special[0].cart : '分校設備'}（${special.length} 台）</div>
-          ${special.map(r => `<div style="font-family:monospace;font-size:0.85rem;color:#b45309">${r.name}</div>`).join('')}
+        <div class="mdm-cart-card" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:1rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
+            <span style="font-weight:800;color:#b45309;font-size:1.05rem">🏫 ${special[0]?.cart || '分校設備'}</span>
+            <span style="background:#fef3c7;color:#b45309;padding:2px 10px;border-radius:9999px;font-size:0.78rem;font-weight:700">${special.length} 台</span>
+          </div>
+          <div style="line-height:2">
+            ${special.map(r => `<span title="${r.name}" style="display:inline-block;background:#fef3c7;border-radius:6px;padding:1px 8px;margin:2px;font-family:monospace;font-size:0.88rem;color:#92400e;font-weight:600">${mdmShortNum(r.name)}</span>`).join('')}
+          </div>
         </div>`;
+
       if (notFound.length) html += `
-        <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:1rem">
-          <div style="font-weight:700;color:#ef4444;margin-bottom:0.5rem">⚠ 查無紀錄（${notFound.length} 台）</div>
-          ${notFound.map(r => `<div style="font-family:monospace;font-size:0.85rem;color:#dc2626">${r.name}</div>`).join('')}
+        <div class="mdm-cart-card" style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:1rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
+            <span style="font-weight:800;color:#ef4444;font-size:1.05rem">⚠ 查無紀錄</span>
+            <span style="background:#fee2e2;color:#ef4444;padding:2px 10px;border-radius:9999px;font-size:0.78rem;font-weight:700">${notFound.length} 台</span>
+          </div>
+          <div style="line-height:2">
+            ${notFound.map(r => `<span title="${r.name}" style="display:inline-block;background:#fee2e2;border-radius:6px;padding:1px 8px;margin:2px;font-family:monospace;font-size:0.88rem;color:#dc2626;font-weight:600">${mdmShortNum(r.name)}</span>`).join('')}
+          </div>
         </div>`;
+
       document.getElementById('mdm-group-view').innerHTML = html;
+
+      // 更新標籤
+      const label = document.getElementById('mdm-result-label');
+      if (label) label.textContent = `${sorted.length} 輛充電車，共 ${found.length} 台已找到`;
     }
 
     function mdmToggleView() {
@@ -1525,6 +1558,86 @@
       if (!mdmLastResults.length) return;
       navigator.clipboard.writeText(mdmLastResults.map(r => `${r.name}\t${r.syncTime}\t${r.cart||'查無'}`).join('\n'));
       alert('已複製！');
+    };
+
+    window.mdmPrint = function() {
+      if (!mdmLastResults.length) return alert('請先查詢');
+      const schoolName = (window.SCHOOL_CONFIG && window.SCHOOL_CONFIG.schoolName) || 'iPad';
+      const found = mdmLastResults.filter(r => r.found && !r.special);
+      const special = mdmLastResults.filter(r => r.special);
+      const notFound = mdmLastResults.filter(r => !r.found && !r.special);
+      const groups = {};
+      for (const r of found) {
+        const key = r.cart || '未知';
+        if (!groups[key]) groups[key] = { cart: r.cart, room: r.room, items: [] };
+        groups[key].items.push(r);
+      }
+      const sorted = Object.values(groups).sort((a,b) => {
+        const na = parseInt((a.cart||'').replace(/[^0-9]/g,''))||0;
+        const nb = parseInt((b.cart||'').replace(/[^0-9]/g,''))||0;
+        return na - nb;
+      });
+
+      const cardsHtml = sorted.map(g => `
+        <div class="card">
+          <div class="card-header">
+            <span class="cart-name">🚚 ${g.cart}</span>
+            <span class="badge green">${g.items.length} 台</span>
+          </div>
+          <div class="room">📍 ${g.room || '—'}</div>
+          <div class="nums">${g.items.map(r => `<span class="num">${mdmShortNum(r.name)}</span>`).join('')}</div>
+        </div>`).join('');
+
+      const specialHtml = special.length ? `
+        <div class="card amber">
+          <div class="card-header">
+            <span class="cart-name">🏫 ${special[0]?.cart || '分校設備'}</span>
+            <span class="badge amber">${special.length} 台</span>
+          </div>
+          <div class="nums">${special.map(r => `<span class="num amber">${mdmShortNum(r.name)}</span>`).join('')}</div>
+        </div>` : '';
+
+      const notFoundHtml = notFound.length ? `
+        <div class="card red">
+          <div class="card-header">
+            <span class="cart-name">⚠ 查無紀錄</span>
+            <span class="badge red">${notFound.length} 台</span>
+          </div>
+          <div class="nums">${notFound.map(r => `<span class="num red">${mdmShortNum(r.name)}</span>`).join('')}</div>
+        </div>` : '';
+
+      const win = window.open('', '_blank');
+      win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <title>${schoolName} MDM 查詢結果</title>
+      <style>
+        body { font-family: 'Noto Sans TC', sans-serif; margin: 1.5cm; color: #222; }
+        h1 { font-size: 1.3rem; margin-bottom: 0.3rem; }
+        .meta { font-size: 0.8rem; color: #666; margin-bottom: 1rem; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; }
+        .card { border: 1.5px solid #c7d2fe; border-radius: 8px; padding: 0.6rem 0.8rem; break-inside: avoid; }
+        .card.amber { border-color: #fcd34d; }
+        .card.red { border-color: #fca5a5; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
+        .cart-name { font-weight: 800; font-size: 1rem; color: #4f46e5; }
+        .card.amber .cart-name { color: #b45309; }
+        .card.red .cart-name { color: #ef4444; }
+        .room { font-size: 0.75rem; color: #6d28d9; margin-bottom: 0.35rem; font-weight: 600; }
+        .nums { line-height: 1.9; }
+        .num { display: inline-block; background: #f3f4f6; border-radius: 4px; padding: 0 6px; margin: 2px; font-family: monospace; font-size: 0.85rem; font-weight: 600; }
+        .num.amber { background: #fef3c7; color: #92400e; }
+        .num.red { background: #fee2e2; color: #dc2626; }
+        .badge { font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+        .badge.green { background: #ecfdf5; color: #059669; }
+        .badge.amber { background: #fef3c7; color: #b45309; }
+        .badge.red { background: #fee2e2; color: #ef4444; }
+        @media print { body { margin: 1cm; } }
+      </style></head><body>
+      <h1>📱 ${schoolName} — MDM 未使用載具查詢結果</h1>
+      <div class="meta">列印時間：${new Date().toLocaleString('zh-TW', {timeZone:'Asia/Taipei'})}　共 ${sorted.length} 輛充電車，${found.length} 台已找到${notFound.length ? '，' + notFound.length + ' 台查無' : ''}</div>
+      <div class="grid">${cardsHtml}${specialHtml}${notFoundHtml}</div>
+      <script>window.onload=()=>{window.print();}<\/script>
+      </body></html>`);
+      win.document.close();
     };
     // ===== END MDM =====
 
