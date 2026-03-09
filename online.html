@@ -180,7 +180,10 @@
       <div id="logs-view" class="hidden bg-white p-6 rounded-xl card-shadow">
         <div class="flex justify-between items-center mb-4 border-b pb-2">
           <h2 class="text-2xl font-semibold text-gray-800">📋 操作紀錄</h2>
-          <button onclick="loadLogs()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg text-sm transition">重新整理</button>
+          <div class="flex gap-2">
+            <button onclick="exportLogsToCSV()" class="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold py-2 px-3 rounded-lg text-sm transition">📥 匯出 CSV</button>
+            <button onclick="loadLogs()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg text-sm transition">重新整理</button>
+          </div>
         </div>
         <div id="logs-container" class="space-y-2 max-h-[70vh] overflow-y-auto">
           <p class="text-gray-400 text-center py-8">載入中...</p>
@@ -1070,6 +1073,35 @@
       a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: 'text/csv' }));
       a.download = `iPad_Assets_${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
+    };
+
+    window.exportLogsToCSV = async () => {
+      showSystemMessage('讀取操作紀錄中...', 'secondary');
+      try {
+        // 抓全部紀錄（不限筆數）
+        const q = query(collection(db, LOG_COLLECTION), orderBy('timestamp', 'desc'));
+        const snap = await getDocs(q);
+        const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (!logs.length) { showSystemMessage('尚無操作紀錄', 'error'); return; }
+        const escape = v => `"${String(v || '').replace(/"/g, '""')}"`;
+        const rows = [
+          ['時間', '動作', '詳情', '操作者', 'Email'].join(','),
+          ...logs.map(l => [
+            escape(l.localTime || ''),
+            escape(l.action || ''),
+            escape(l.detail || ''),
+            escape(l.userName || ''),
+            escape(l.user || '')
+          ].join(','))
+        ].join('\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(["\ufeff" + rows], { type: 'text/csv' }));
+        a.download = `iPad_Logs_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        showSystemMessage(`✅ 已匯出 ${logs.length} 筆操作紀錄`, 'secondary');
+      } catch(e) {
+        showSystemMessage('匯出失敗：' + e.message, 'error');
+      }
     };
 
     // --- 事件綁定 ---
