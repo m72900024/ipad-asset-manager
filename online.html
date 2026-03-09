@@ -191,55 +191,7 @@
       </div>
 
       <!-- 視圖 5: MDM 未使用查詢 -->
-      <div id="mdm-view" class="hidden space-y-4">
-        <div class="bg-white p-6 rounded-xl card-shadow">
-          <h2 class="text-2xl font-semibold text-gray-800 border-b pb-2 mb-4">🔍 MDM 未使用載具查詢</h2>
-          <p class="text-sm text-gray-500 mb-3">從 MDM 網站複製「未使用載具名稱」整欄資料，貼上後自動查詢位置</p>
-          <textarea id="mdm-input" rows="8"
-            class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono focus:ring-indigo-500 focus:border-indigo-500"
-            placeholder="直接貼上 MDM 清單，例如：&#10;IPAD001  2026/2/24 下午 08:02:03&#10;IPAD002  2026/3/5 上午 09:33:00&#10;..."></textarea>
-          <div class="flex flex-wrap gap-3 mt-3 items-center">
-            <button onclick="doMdmLookup()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition">🔍 查詢位置</button>
-            <button onclick="document.getElementById('mdm-input').value='';document.getElementById('mdm-stats').classList.add('hidden');document.getElementById('mdm-result-wrap').classList.add('hidden');" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition">清除</button>
-            <label class="flex items-center gap-2 text-sm text-gray-600 ml-auto cursor-pointer">
-              <input type="checkbox" id="mdm-toggle-group" onchange="mdmToggleView()" class="rounded"> 依充電車分組
-            </label>
-          </div>
-        </div>
-        <!-- 統計 -->
-        <div id="mdm-stats" class="hidden grid grid-cols-3 gap-3">
-          <div class="bg-white rounded-lg shadow p-4 text-center"><p class="text-3xl font-bold text-gray-800" id="mdm-stat-total">0</p><p class="text-xs text-gray-500 mt-1">總筆數</p></div>
-          <div class="bg-white rounded-lg shadow p-4 text-center"><p class="text-3xl font-bold text-emerald-600" id="mdm-stat-found">0</p><p class="text-xs text-gray-500 mt-1">找到紀錄</p></div>
-          <div class="bg-white rounded-lg shadow p-4 text-center"><p class="text-3xl font-bold text-red-500" id="mdm-stat-none">0</p><p class="text-xs text-gray-500 mt-1">查無（需手動確認）</p></div>
-        </div>
-        <!-- 結果 -->
-        <div id="mdm-result-wrap" class="hidden">
-          <!-- 列表視圖 -->
-          <div id="mdm-list-view" class="bg-white rounded-xl shadow overflow-hidden">
-            <div class="flex justify-between items-center p-4 border-b">
-              <h3 class="font-semibold text-gray-700">查詢結果</h3>
-              <button onclick="mdmCopyResult()" class="text-sm text-indigo-600 hover:underline">📋 複製</button>
-            </div>
-            <div class="overflow-x-auto"><table class="w-full text-sm">
-              <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
-                <tr>
-                  <th class="px-4 py-3 text-left">#</th>
-                  <th class="px-4 py-3 text-left">載具名稱</th>
-                  <th class="px-4 py-3 text-left">MDM 同步時間</th>
-                  <th class="px-4 py-3 text-left">充電車</th>
-                  <th class="px-4 py-3 text-left">班級</th>
-                  <th class="px-4 py-3 text-left">狀態</th>
-                </tr>
-              </thead>
-              <tbody id="mdm-result-table" class="divide-y divide-gray-100"></tbody>
-            </table></div>
-          </div>
-          <!-- 分組視圖 -->
-          <div id="mdm-group-view" class="hidden grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="mdm-group-content"></div>
-        </div>
-      </div>
-
-      <!-- 視圖 5: MDM 查詢 -->
+            <!-- 視圖 5: MDM 查詢 -->
       <div id="mdm-view" class="hidden space-y-4">
         <!-- MDM 未使用查詢 -->
         <div class="bg-white p-6 rounded-xl card-shadow">
