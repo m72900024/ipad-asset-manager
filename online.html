@@ -1502,8 +1502,8 @@
             }
           }
         }
-        if (rec) return { index: i+1, ...item, cart: rec.assignedCart || rec.currentCart, room: rec.currentLocation, found: true, special: false };
-        return { index: i+1, ...item, cart: null, room: null, found: false, special: false };
+        if (rec) return { index: i+1, ...item, cart: rec.assignedCart || rec.currentCart, room: rec.currentLocation, found: true, special: false, loanedTo: rec.loanedTo || '', loanedSince: rec.loanedSince || '' };
+        return { index: i+1, ...item, cart: null, room: null, found: false, special: false, loanedTo: '', loanedSince: '' };
       });
 
       // 統計
@@ -1522,15 +1522,22 @@
     };
 
     function mdmRenderList() {
-      document.getElementById('mdm-result-table').innerHTML = mdmLastResults.map(r => `
-        <tr class="${r.found ? '' : 'bg-red-50/30'}" style="border-bottom:1px solid #f3f4f6">
+      document.getElementById('mdm-result-table').innerHTML = mdmLastResults.map(r => {
+        const isLoaned = r.loanedTo;
+        const loanBadge = isLoaned ? `<span style="margin-left:6px;display:inline-block;padding:1px 7px;border-radius:9999px;font-size:0.72rem;font-weight:700;background:#fef9c3;color:#92400e">🏷️ ${r.loanedTo}${r.loanedSince ? '·' + r.loanedSince : ''}</span>` : '';
+        const rowBg = isLoaned ? 'background:#fffbeb' : (r.found ? '' : 'background:#fff5f5');
+        const statusTag = r.special ? '🏫 分校' : isLoaned ? '🏷️ 外借中' : r.found ? '✓ 找到' : '⚠ 查無';
+        const statusStyle = r.special ? 'background:#fef3c7;color:#b45309' : isLoaned ? 'background:#fef9c3;color:#92400e' : r.found ? 'background:#ecfdf5;color:#059669' : 'background:#fef2f2;color:#ef4444';
+        return `
+        <tr style="${rowBg};border-bottom:1px solid #f3f4f6">
           <td class="px-4 py-3 text-gray-400">${r.index}</td>
           <td class="px-4 py-3 font-mono font-semibold text-gray-800">${r.name}</td>
           <td class="px-4 py-3 text-gray-500 text-xs">${r.syncTime}</td>
           <td class="px-4 py-3 font-bold ${r.special ? 'text-amber-600' : r.found ? 'text-indigo-600' : 'text-gray-300'}">${r.cart || '—'}</td>
-          <td class="px-4 py-3 font-bold ${r.special ? 'text-amber-600' : r.found ? 'text-emerald-600' : 'text-gray-300'}">${r.special ? r.room : r.room && !r.special ? r.room : '—'}</td>
-          <td class="px-4 py-3"><span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:0.75rem;font-weight:600;${r.special ? 'background:#fef3c7;color:#b45309' : r.found ? 'background:#ecfdf5;color:#059669' : 'background:#fef2f2;color:#ef4444'}">${r.special ? '🏫 分校' : r.found ? '✓ 找到' : '⚠ 查無'}</span></td>
-        </tr>`).join('');
+          <td class="px-4 py-3 font-bold ${r.special ? 'text-amber-600' : r.found ? 'text-emerald-600' : 'text-gray-300'}">${r.special ? r.room : r.room && !r.special ? r.room : '—'}${loanBadge}</td>
+          <td class="px-4 py-3"><span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:0.75rem;font-weight:600;${statusStyle}">${statusTag}</span></td>
+        </tr>`;
+      }).join('');
     }
 
     function mdmShortNum(name) {
@@ -1564,7 +1571,10 @@
             <span style="background:#ede9fe;color:#6d28d9;padding:2px 10px;border-radius:9999px;font-size:0.78rem;font-weight:700">📍 ${g.room || '—'}</span>
           </div>
           <div style="line-height:2">
-            ${g.items.map(r => `<span title="${r.name}" style="display:inline-block;background:#f3f4f6;border-radius:6px;padding:1px 8px;margin:2px;font-family:monospace;font-size:0.88rem;color:#374151;font-weight:600">${mdmShortNum(r.name)}</span>`).join('')}
+            ${g.items.map(r => r.loanedTo
+              ? `<span title="${r.name} — 外借中：${r.loanedTo}${r.loanedSince ? '（' + r.loanedSince + '）' : ''}" style="display:inline-block;background:#fef9c3;border:1px solid #fcd34d;border-radius:6px;padding:1px 8px;margin:2px;font-family:monospace;font-size:0.88rem;color:#92400e;font-weight:700">${mdmShortNum(r.name)} 🏷️</span>`
+              : `<span title="${r.name}" style="display:inline-block;background:#f3f4f6;border-radius:6px;padding:1px 8px;margin:2px;font-family:monospace;font-size:0.88rem;color:#374151;font-weight:600">${mdmShortNum(r.name)}</span>`
+            ).join('')}
           </div>
         </div>`).join('');
 
