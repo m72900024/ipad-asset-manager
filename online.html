@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>iPad 資產管理系統</title>
+  <script src="school-config.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -193,7 +194,7 @@
           <p class="text-sm text-gray-500 mb-3">從 MDM 網站複製「未使用載具名稱」整欄資料，貼上後自動查詢位置</p>
           <textarea id="mdm-input" rows="8"
             class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono focus:ring-indigo-500 focus:border-indigo-500"
-            placeholder="直接貼上 MDM 清單，例如：&#10;YZES_IPAD9_325  2026/2/24 下午 08:02:03&#10;YG2022iPAD-001  2026/3/5 上午 09:33:00&#10;..."></textarea>
+            placeholder="直接貼上 MDM 清單，例如：&#10;IPAD001  2026/2/24 下午 08:02:03&#10;IPAD002  2026/3/5 上午 09:33:00&#10;..."></textarea>
           <div class="flex flex-wrap gap-3 mt-3 items-center">
             <button onclick="doMdmLookup()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition">🔍 查詢位置</button>
             <button onclick="document.getElementById('mdm-input').value='';document.getElementById('mdm-stats').classList.add('hidden');document.getElementById('mdm-result-wrap').classList.add('hidden');" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition">清除</button>
@@ -250,7 +251,7 @@
             <div>
               <textarea id="mdm-input" rows="6"
                 class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="貼上 MDM 清單，例如：&#10;YZES_IPAD9_325  2026/2/24 下午 08:02:03&#10;YG2022iPAD-001  2026/3/5 上午 09:33:00"></textarea>
+                placeholder="貼上 MDM 清單，例如：&#10;IPAD001  2026/2/24 下午 08:02:03&#10;IPAD002  2026/3/5 上午 09:33:00"></textarea>
               <div class="flex gap-2 mt-2">
                 <button onclick="doMdmLookup()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition text-sm">🔍 查詢位置</button>
                 <button onclick="mdmClear()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg transition text-sm">清除</button>
@@ -374,7 +375,7 @@
               <div class="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <label class="text-gray-600">前綴</label>
-                  <input type="text" id="gen-prefix" placeholder="YG2022iPAD-" class="w-full p-2 border rounded font-mono text-xs">
+                  <input type="text" id="gen-prefix" placeholder="例：IPAD-" class="w-full p-2 border rounded font-mono text-xs">
                 </div>
                 <div>
                   <label class="text-gray-600">編號範圍</label>
@@ -386,11 +387,11 @@
                 </div>
                 <div>
                   <label class="text-gray-600">隸屬充電車</label>
-                  <input type="text" id="gen-cart" placeholder="漁光分校" class="w-full p-2 border rounded text-xs">
+                  <input type="text" id="gen-cart" placeholder="例：漁光分校" class="w-full p-2 border rounded text-xs">
                 </div>
                 <div>
                   <label class="text-gray-600">存放地點</label>
-                  <input type="text" id="gen-location" placeholder="漁光分校" class="w-full p-2 border rounded text-xs">
+                  <input type="text" id="gen-location" placeholder="例：漁光分校" class="w-full p-2 border rounded text-xs">
                 </div>
               </div>
               <button onclick="generateBatch()" class="mt-2 w-full bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold py-2 rounded transition">⚡ 生成到下方</button>
@@ -474,23 +475,25 @@
     import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, writeBatch, addDoc, query, orderBy, limit as fsLimit, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
     import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
 
+    // --- 讀取學校設定 ---
+    const _cfg = window.SCHOOL_CONFIG || {};
+    const _fb  = _cfg.firebase || {};
+
     const app = initializeApp({
-      apiKey: "AIzaSyClniX_uQNPDRC8bTLZP-s3-aGB6466t1c",
-      authDomain: "github-f016e.firebaseapp.com",
-      projectId: "github-f016e",
-      storageBucket: "github-f016e.firebasestorage.app",
-      messagingSenderId: "726498300688",
-      appId: "1:726498300688:web:903d43c66c35b74e3e05d3"
+      apiKey:            _fb.apiKey            || '',
+      authDomain:        _fb.authDomain        || '',
+      projectId:         _fb.projectId         || '',
+      storageBucket:     _fb.storageBucket     || '',
+      messagingSenderId: _fb.messagingSenderId || '',
+      appId:             _fb.appId             || ''
     });
     const db = getFirestore(app);
     const auth = getAuth(app);
     const COLLECTION = "ipad-assets";
     const LOG_COLLECTION = "ipad-logs";
 
-    // --- 管理員白名單 ---
-    const ADMIN_EMAILS = [
-      "m72900024@gmail.com"
-    ];
+    // --- 管理員白名單（來自 school-config.js）---
+    const ADMIN_EMAILS = _cfg.adminEmails || [];
 
     // --- 全域變數 ---
     let allIpads = [];
@@ -1359,7 +1362,12 @@
 
     // ===== MDM 查詢功能 =====
     function mdmGetSpecial(name) {
-      if (name.startsWith('YG2022iPAD')) return { cart: '漁光分校', room: '漁光分校', special: true };
+      const branches = (window.SCHOOL_CONFIG && window.SCHOOL_CONFIG.branches) || [];
+      for (const branch of branches) {
+        if (branch.prefix && name.startsWith(branch.prefix)) {
+          return { cart: branch.name, room: branch.name, special: true };
+        }
+      }
       return null;
     }
 
@@ -1456,7 +1464,7 @@
         </div>`).join('');
       if (special.length) html += `
         <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:1rem">
-          <div style="font-weight:700;color:#b45309;margin-bottom:0.5rem">🏫 漁光分校（${special.length} 台）</div>
+          <div style="font-weight:700;color:#b45309;margin-bottom:0.5rem">🏫 ${special[0] && special[0].cart ? special[0].cart : '分校設備'}（${special.length} 台）</div>
           ${special.map(r => `<div style="font-family:monospace;font-size:0.85rem;color:#b45309">${r.name}</div>`).join('')}
         </div>`;
       if (notFound.length) html += `

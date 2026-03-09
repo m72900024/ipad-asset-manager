@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>未使用載具查詢工具</title>
+  <script src="school-config.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { font-family: -apple-system, 'Noto Sans TC', sans-serif; }
@@ -29,7 +30,7 @@
       <label class="block text-sm font-semibold text-gray-700 mb-2">📋 貼上 MDM 未使用載具清單</label>
       <textarea id="mdm-input" rows="10" 
         class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono focus:ring-indigo-500 focus:border-indigo-500"
-        placeholder="直接從 MDM 網站複製整欄資料貼上，例如：&#10;YG2022iPAD-001	2026/3/5 上午 09:33:00&#10;YZES_IPAD9_325	2026/2/24 下午 08:02:03&#10;..."></textarea>
+        placeholder="直接從 MDM 網站複製整欄資料貼上，例如：&#10;IPAD001	2026/3/5 上午 09:33:00&#10;IPAD002	2026/2/24 下午 08:02:03&#10;..."></textarea>
       <div class="flex gap-3 mt-3">
         <button onclick="doLookup()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition">
           🔍 查詢位置
@@ -114,10 +115,13 @@ const IPAD_DATA = {"YZES_IPAD9_002": {"cart": "充電車1", "room": "410"}, "YZE
     return results;
   }
 
-  // 特殊設備規則
+  // 特殊設備規則（分校設備，來自 school-config.js）
   function getSpecialInfo(name) {
-    if (name.startsWith('YG2022iPAD')) {
-      return { cart: '漁光分校', room: '漁光分校', special: true };
+    const branches = (window.SCHOOL_CONFIG && window.SCHOOL_CONFIG.branches) || [];
+    for (const branch of branches) {
+      if (branch.prefix && name.startsWith(branch.prefix)) {
+        return { cart: branch.name, room: branch.name, special: true };
+      }
     }
     return null;
   }
@@ -219,8 +223,8 @@ const IPAD_DATA = {"YZES_IPAD9_002": {"cart": "充電車1", "room": "410"}, "YZE
     if (special.length) {
       html += `
         <div class="cart-group bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <h3 class="font-bold text-amber-600 mb-2">🏫 漁光分校（${special.length} 台）</h3>
-          <p class="text-xs text-gray-500 mb-2">屬漁光分校設備，不在充電車系統內</p>
+          <h3 class="font-bold text-amber-600 mb-2">🏫 ${special[0] && special[0].cart ? special[0].cart : '分校設備'}（${special.length} 台）</h3>
+          <p class="text-xs text-gray-500 mb-2">屬分校設備，不在充電車系統內</p>
           ${special.map(r => `
             <div class="text-sm font-mono text-amber-700">${r.name}</div>
           `).join('')}
